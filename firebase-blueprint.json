@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a teacher or administrator in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique Firebase Auth UID." },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "teacher"] },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Diary": {
+      "title": "Diary",
+      "description": "Represents a daily homework entry for a specific class.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time", "description": "The date the diary is for (ISO string)." },
+        "class": { "type": "integer", "description": "The class level (1-10)." },
+        "subject": { "type": "string" },
+        "task": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "class", "subject", "task", "authorId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles."
+    },
+    "/diaries/{diaryId}": {
+      "schema": "Diary",
+      "description": "Daily homework entries."
+    }
+  }
+}
