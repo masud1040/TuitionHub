@@ -9,6 +9,11 @@ import GeneralMathQuiz from './pages/GeneralMathQuiz';
 import MultiplicationTableQuiz from './pages/MultiplicationTableQuiz';
 import WordProblemQuiz from './pages/WordProblemQuiz';
 import NumberGame from './pages/NumberGame';
+import BanglaHome from './pages/BanglaHome';
+import BanglaVowels from './pages/BanglaVowels';
+import BanglaConsonants from './pages/BanglaConsonants';
+import BanglaPoems from './pages/BanglaPoems';
+import BanglaConjuncts from './pages/BanglaConjuncts';
 import { auth } from './lib/firebase';
 import React from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -47,7 +52,11 @@ export default function App() {
           <Route path="/math/tables" element={<MultiplicationTableQuiz />} />
           <Route path="/math/problems" element={<WordProblemQuiz />} />
           <Route path="/math/number-game" element={<NumberGame />} />
-          <Route path="/bangla" element={<SubjectPage name="Bangla" />} />
+          <Route path="/bangla" element={<BanglaHome />} />
+          <Route path="/bangla/vowels" element={<BanglaVowels />} />
+          <Route path="/bangla/consonants" element={<BanglaConsonants />} />
+          <Route path="/bangla/poems" element={<BanglaPoems />} />
+          <Route path="/bangla/conjuncts" element={<BanglaConjuncts />} />
           <Route path="/english" element={<SubjectPage name="English" />} />
           <Route path="/login" element={<AdminLogin />} />
           <Route 

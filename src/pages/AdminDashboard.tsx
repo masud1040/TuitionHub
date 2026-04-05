@@ -31,11 +31,14 @@ interface QuizEntry {
 
 export default function AdminDashboard() {
   const [seedConfirm, setSeedConfirm] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'diaries' | 'math'>('diaries');
+  const [activeTab, setActiveTab] = React.useState<'diaries' | 'math' | 'bangla'>('diaries');
+  const [banglaTab, setBanglaTab] = React.useState<'poems' | 'conjuncts'>('poems');
   const [mathFilter, setMathFilter] = React.useState<'all' | 'general' | 'word_problem'>('all');
   const [selectedClass, setSelectedClass] = React.useState<number>(1);
   const [diaries, setDiaries] = React.useState<DiaryEntry[]>([]);
   const [quizzes, setQuizzes] = React.useState<QuizEntry[]>([]);
+  const [poems, setPoems] = React.useState<any[]>([]);
+  const [conjuncts, setConjuncts] = React.useState<any[]>([]);
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -66,6 +69,19 @@ export default function AdminDashboard() {
     correctAnswer: ''
   });
 
+  // Bangla Form States
+  const [poemFormData, setPoemFormData] = React.useState({
+    title: '',
+    content: '',
+    author: ''
+  });
+
+  const [conjunctFormData, setConjunctFormData] = React.useState({
+    combined: '',
+    broken: '',
+    word: ''
+  });
+
   React.useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
       if (!user) {
@@ -75,6 +91,8 @@ export default function AdminDashboard() {
 
     let unsubscribeDiaries = () => {};
     let unsubscribeQuizzes = () => {};
+    let unsubscribePoems = () => {};
+    let unsubscribeConjuncts = () => {};
 
     if (activeTab === 'diaries') {
       const q = query(
@@ -96,7 +114,7 @@ export default function AdminDashboard() {
         console.error("Error fetching diaries:", error);
         setLoading(false);
       });
-    } else {
+    } else if (activeTab === 'math') {
       const q = query(
         collection(db, 'math_quizzes')
       );
@@ -117,14 +135,34 @@ export default function AdminDashboard() {
         console.error("Error fetching quizzes:", error);
         setLoading(false);
       });
+    } else if (activeTab === 'bangla') {
+      if (banglaTab === 'poems') {
+        const q = query(collection(db, 'bangla_poems'));
+        unsubscribePoems = onSnapshot(q, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const sortedData = data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          setPoems(sortedData);
+          setLoading(false);
+        });
+      } else {
+        const q = query(collection(db, 'bangla_conjuncts'));
+        unsubscribeConjuncts = onSnapshot(q, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const sortedData = data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          setConjuncts(sortedData);
+          setLoading(false);
+        });
+      }
     }
 
     return () => {
       unsubscribeAuth();
       unsubscribeDiaries();
       unsubscribeQuizzes();
+      unsubscribePoems();
+      unsubscribeConjuncts();
     };
-  }, [selectedClass, activeTab, navigate]);
+  }, [selectedClass, activeTab, banglaTab, navigate]);
 
   const handleLogout = async () => {
     console.log("Logging out...");
@@ -369,6 +407,60 @@ export default function AdminDashboard() {
     }
   };
 
+  const handlePoemSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'bangla_poems', editingId), {
+          ...poemFormData,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+      } else {
+        await addDoc(collection(db, 'bangla_poems'), {
+          ...poemFormData,
+          authorId: auth.currentUser.uid,
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setPoemFormData({ title: '', content: '', author: '' });
+      setSuccessMessage("সফলভাবে সেভ করা হয়েছে!");
+    } catch (err) {
+      console.error("Error saving poem:", err);
+      setSuccessMessage("সেভ করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  const handleConjunctSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'bangla_conjuncts', editingId), {
+          ...conjunctFormData,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+      } else {
+        await addDoc(collection(db, 'bangla_conjuncts'), {
+          ...conjunctFormData,
+          authorId: auth.currentUser.uid,
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setConjunctFormData({ combined: '', broken: '', word: '' });
+      setSuccessMessage("সফলভাবে সেভ করা হয়েছে!");
+    } catch (err) {
+      console.error("Error saving conjunct:", err);
+      setSuccessMessage("সেভ করতে সমস্যা হয়েছে।");
+    }
+  };
+
   const handleDelete = async (collectionName: string, id: string) => {
     setDeleteConfirm({ collection: collectionName, id });
   };
@@ -412,6 +504,28 @@ export default function AdminDashboard() {
       correctAnswer: quiz.correctAnswer
     });
     setIsAdding(true);
+  };
+
+  const startPoemEdit = (poem: any) => {
+    setEditingId(poem.id);
+    setPoemFormData({
+      title: poem.title,
+      content: poem.content,
+      author: poem.author || ''
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startConjunctEdit = (conjunct: any) => {
+    setEditingId(conjunct.id);
+    setConjunctFormData({
+      combined: conjunct.combined,
+      broken: conjunct.broken,
+      word: conjunct.word
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -561,7 +675,7 @@ export default function AdminDashboard() {
                   subject: '',
                   task: ''
                 });
-              } else {
+              } else if (activeTab === 'math') {
                 setQuizFormData({
                   type: 'general',
                   category: 'addition',
@@ -569,12 +683,18 @@ export default function AdminDashboard() {
                   options: ['', '', '', ''],
                   correctAnswer: ''
                 });
+              } else if (activeTab === 'bangla') {
+                if (banglaTab === 'poems') {
+                  setPoemFormData({ title: '', content: '', author: '' });
+                } else {
+                  setConjunctFormData({ combined: '', broken: '', word: '' });
+                }
               }
             }}
             className="premium-button-primary flex items-center justify-center space-x-2"
           >
             {isAdding ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-            <span>{isAdding ? "Cancel" : (activeTab === 'diaries' ? "Add New Diary" : "Add New Quiz")}</span>
+            <span>{isAdding ? "Cancel" : (activeTab === 'diaries' ? "Add New Diary" : activeTab === 'math' ? "Add New Quiz" : banglaTab === 'poems' ? "Add New Poem" : "Add New Conjunct")}</span>
           </button>
 
           <button 
@@ -588,11 +708,11 @@ export default function AdminDashboard() {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-4 mb-8">
+      <div className="flex space-x-4 mb-8 overflow-x-auto pb-2">
         <button
           onClick={() => { setActiveTab('diaries'); setIsAdding(false); setEditingId(null); setLoading(true); }}
           className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all",
+            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
             activeTab === 'diaries' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
           )}
         >
@@ -601,11 +721,20 @@ export default function AdminDashboard() {
         <button
           onClick={() => { setActiveTab('math'); setIsAdding(false); setEditingId(null); setLoading(true); }}
           className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all",
+            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
             activeTab === 'math' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
           )}
         >
           Math Quizzes
+        </button>
+        <button
+          onClick={() => { setActiveTab('bangla'); setIsAdding(false); setEditingId(null); setLoading(true); }}
+          className={cn(
+            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
+            activeTab === 'bangla' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
+          )}
+        >
+          Bangla Section
         </button>
       </div>
 
@@ -632,7 +761,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'math' ? (
             <div className="space-y-6">
               <div className="premium-card p-6 bg-primary/5 border-primary/10">
                 <h3 className="font-semibold text-primary mb-2 flex items-center space-x-2">
@@ -687,6 +816,46 @@ export default function AdminDashboard() {
                       {type === 'all' ? 'All Quizzes' : type === 'general' ? 'General Math' : 'Word Problems'}
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="premium-card p-6 bg-purple-50 border-purple-100">
+                <h3 className="font-semibold text-purple-700 mb-2 flex items-center space-x-2">
+                  <BookOpen className="h-5 w-5" />
+                  <span>Bangla Management</span>
+                </h3>
+                <p className="text-sm text-purple-700/80 leading-relaxed mb-6">
+                  Manage poems and conjuncts for the Bangla section.
+                </p>
+              </div>
+
+              <div className="premium-card p-6">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">Select Category</label>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => { setBanglaTab('poems'); setIsAdding(false); setEditingId(null); }}
+                    className={cn(
+                      "w-full py-3 px-4 rounded-xl text-left font-medium transition-all",
+                      banglaTab === 'poems' 
+                        ? "bg-purple-500 text-white shadow-md shadow-purple-500/20" 
+                        : "bg-gray-50 text-text-muted hover:bg-gray-100"
+                    )}
+                  >
+                    Poems (কবিতা)
+                  </button>
+                  <button
+                    onClick={() => { setBanglaTab('conjuncts'); setIsAdding(false); setEditingId(null); }}
+                    className={cn(
+                      "w-full py-3 px-4 rounded-xl text-left font-medium transition-all",
+                      banglaTab === 'conjuncts' 
+                        ? "bg-green-500 text-white shadow-md shadow-green-500/20" 
+                        : "bg-gray-50 text-text-muted hover:bg-gray-100"
+                    )}
+                  >
+                    Conjuncts (যুক্তবর্ণ)
+                  </button>
                 </div>
               </div>
             </div>
@@ -752,7 +921,7 @@ export default function AdminDashboard() {
                       </div>
                     </form>
                   </>
-                ) : (
+                ) : activeTab === 'math' ? (
                   <>
                     <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
                       <Calculator className="text-primary h-6 w-6" />
@@ -839,6 +1008,105 @@ export default function AdminDashboard() {
                       </div>
                     </form>
                   </>
+                ) : banglaTab === 'poems' ? (
+                  <>
+                    <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                      <BookOpen className="text-purple-500 h-6 w-6" />
+                      <span>{editingId ? "Edit Poem" : "Add New Poem"}</span>
+                    </h2>
+                    <form onSubmit={handlePoemSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. আমাদের ছোট নদী"
+                            value={poemFormData.title}
+                            onChange={(e) => setPoemFormData({...poemFormData, title: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Author (Optional)</label>
+                          <input 
+                            type="text"
+                            placeholder="e.g. রবীন্দ্রনাথ ঠাকুর"
+                            value={poemFormData.author}
+                            onChange={(e) => setPoemFormData({...poemFormData, author: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Content</label>
+                        <textarea 
+                          required
+                          rows={6}
+                          placeholder="Enter poem content here..."
+                          value={poemFormData.content}
+                          onChange={(e) => setPoemFormData({...poemFormData, content: e.target.value})}
+                          className="premium-input resize-none"
+                        />
+                      </div>
+                      <div className="flex justify-end space-x-4">
+                        <button type="submit" className="premium-button-primary bg-purple-500 hover:bg-purple-600 shadow-purple-200 flex items-center space-x-2">
+                          <Save className="h-5 w-5" />
+                          <span>{editingId ? "Update Poem" : "Save Poem"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                      <BookOpen className="text-green-500 h-6 w-6" />
+                      <span>{editingId ? "Edit Conjunct" : "Add New Conjunct"}</span>
+                    </h2>
+                    <form onSubmit={handleConjunctSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Combined Form</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. ক্ক"
+                            value={conjunctFormData.combined}
+                            onChange={(e) => setConjunctFormData({...conjunctFormData, combined: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Broken Form</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. ক + ক"
+                            value={conjunctFormData.broken}
+                            onChange={(e) => setConjunctFormData({...conjunctFormData, broken: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Example Word</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. চক্কর"
+                            value={conjunctFormData.word}
+                            onChange={(e) => setConjunctFormData({...conjunctFormData, word: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end space-x-4">
+                        <button type="submit" className="premium-button-primary bg-green-500 hover:bg-green-600 shadow-green-200 flex items-center space-x-2">
+                          <Save className="h-5 w-5" />
+                          <span>{editingId ? "Update Conjunct" : "Save Conjunct"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </>
                 )}
               </motion.div>
             )}
@@ -847,10 +1115,10 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-display font-bold">
-                {activeTab === 'diaries' ? `Recent Diaries for Class ${selectedClass}` : "Recent Math Quizzes"}
+                {activeTab === 'diaries' ? `Recent Diaries for Class ${selectedClass}` : activeTab === 'math' ? "Recent Math Quizzes" : banglaTab === 'poems' ? "Recent Poems" : "Recent Conjuncts"}
               </h2>
               <span className="text-sm text-text-muted font-medium">
-                {activeTab === 'diaries' ? diaries.length : quizzes.length} entries found
+                {activeTab === 'diaries' ? diaries.length : activeTab === 'math' ? quizzes.length : banglaTab === 'poems' ? poems.length : conjuncts.length} entries found
               </span>
             </div>
 
@@ -893,7 +1161,7 @@ export default function AdminDashboard() {
               ) : (
                 <EmptyState message="No diaries found for this class" />
               )
-            ) : (
+            ) : activeTab === 'math' ? (
               quizzes.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4">
                   {quizzes
@@ -921,6 +1189,61 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 <EmptyState message="No math quizzes found" />
+              )
+            ) : (
+              banglaTab === 'poems' ? (
+                poems.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {poems.map((poem) => (
+                      <motion.div layout key={poem.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                        <div className="flex items-start space-x-4">
+                          <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-purple-50 transition-colors">
+                            <BookOpen className="h-6 w-6 text-text-muted group-hover:text-purple-500 transition-colors" />
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-3 mb-1">
+                              <span className="font-display font-bold text-lg">{poem.title}</span>
+                            </div>
+                            <p className="text-sm text-text-muted line-clamp-2">{poem.content}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button onClick={() => startPoemEdit(poem)} className="p-3 text-gray-400 hover:text-purple-500 hover:bg-purple-50 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                          <button onClick={() => handleDelete('bangla_poems', poem.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState message="No poems found" />
+                )
+              ) : (
+                conjuncts.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {conjuncts.map((conjunct) => (
+                      <motion.div layout key={conjunct.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                        <div className="flex items-start space-x-4">
+                          <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-green-50 transition-colors">
+                            <BookOpen className="h-6 w-6 text-text-muted group-hover:text-green-500 transition-colors" />
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-3 mb-1">
+                              <span className="font-display font-bold text-lg">{conjunct.combined}</span>
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">{conjunct.broken}</span>
+                            </div>
+                            <p className="text-sm text-text-muted">Word: {conjunct.word}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button onClick={() => startConjunctEdit(conjunct)} className="p-3 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                          <button onClick={() => handleDelete('bangla_conjuncts', conjunct.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState message="No conjuncts found" />
+                )
               )
             )}
           </div>

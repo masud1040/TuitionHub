@@ -39,5 +39,16 @@ service cloud.firestore {
       // Only admins/teachers can write math quizzes
       allow create, update, delete: if isAdmin();
     }
+
+    // Bangla Section Rules
+    match /bangla_poems/{poemId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /bangla_conjuncts/{conjunctId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
   }
 }
