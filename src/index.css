@@ -1,9 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.maateen.me/kalpurush/font.css');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
+  --font-sans: "Kalpurush", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Kalpurush", "Outfit", sans-serif;
   
   --color-primary: #3B82F6;
   --color-primary-dark: #2563EB;
