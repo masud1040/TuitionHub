@@ -1,6 +1,6 @@
 import React from 'react';
 import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { format, startOfToday, addDays } from 'date-fns';
 import { Plus, Trash2, Edit2, Save, X, LayoutDashboard, Calendar, BookOpen, CheckCircle2, Eye, LogOut, Calculator } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -31,7 +31,7 @@ interface QuizEntry {
 
 export default function AdminDashboard() {
   const [seedConfirm, setSeedConfirm] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'diaries' | 'math' | 'bangla'>('diaries');
+  const [activeTab, setActiveTab] = React.useState<'diaries' | 'math' | 'bangla' | 'students' | 'routine' | 'mcqs'>('diaries');
   const [banglaTab, setBanglaTab] = React.useState<'poems' | 'conjuncts'>('poems');
   const [mathFilter, setMathFilter] = React.useState<'all' | 'general' | 'word_problem'>('all');
   const [selectedClass, setSelectedClass] = React.useState<number>(1);
@@ -39,6 +39,9 @@ export default function AdminDashboard() {
   const [quizzes, setQuizzes] = React.useState<QuizEntry[]>([]);
   const [poems, setPoems] = React.useState<any[]>([]);
   const [conjuncts, setConjuncts] = React.useState<any[]>([]);
+  const [students, setStudents] = React.useState<any[]>([]);
+  const [routines, setRoutines] = React.useState<any[]>([]);
+  const [mcqs, setMcqs] = React.useState<any[]>([]);
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -56,6 +59,7 @@ export default function AdminDashboard() {
   // Diary Form State
   const [diaryFormData, setDiaryFormData] = React.useState({
     date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'),
+    studentId: '',
     subject: '',
     task: ''
   });
@@ -82,6 +86,29 @@ export default function AdminDashboard() {
     word: ''
   });
 
+  // Student Form State
+  const [studentFormData, setStudentFormData] = React.useState({
+    name: '',
+    class: 1,
+    uniqueId: ''
+  });
+
+  // Routine Form State
+  const [routineFormData, setRoutineFormData] = React.useState({
+    class: 1,
+    day: 'Sunday',
+    subjects: ''
+  });
+
+  // MCQ Form State
+  const [mcqFormData, setMcqFormData] = React.useState({
+    class: 3,
+    subject: 'society',
+    question: '',
+    options: ['', '', '', ''],
+    correctAnswer: ''
+  });
+
   React.useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
       if (!user) {
@@ -93,6 +120,9 @@ export default function AdminDashboard() {
     let unsubscribeQuizzes = () => {};
     let unsubscribePoems = () => {};
     let unsubscribeConjuncts = () => {};
+    let unsubscribeStudents = () => {};
+    let unsubscribeRoutines = () => {};
+    let unsubscribeMcqs = () => {};
 
     if (activeTab === 'diaries') {
       const q = query(
@@ -111,8 +141,19 @@ export default function AdminDashboard() {
         setDiaries(sortedData);
         setLoading(false);
       }, (error) => {
-        console.error("Error fetching diaries:", error);
+        handleFirestoreError(error, OperationType.LIST, 'diaries');
         setLoading(false);
+      });
+      
+      const studentsQ = query(
+        collection(db, 'students'),
+        where('class', '==', selectedClass)
+      );
+      unsubscribeStudents = onSnapshot(studentsQ, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setStudents(data);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'students');
       });
     } else if (activeTab === 'math') {
       const q = query(
@@ -132,7 +173,7 @@ export default function AdminDashboard() {
         setQuizzes(sortedData);
         setLoading(false);
       }, (error) => {
-        console.error("Error fetching quizzes:", error);
+        handleFirestoreError(error, OperationType.LIST, 'math_quizzes');
         setLoading(false);
       });
     } else if (activeTab === 'bangla') {
@@ -143,6 +184,9 @@ export default function AdminDashboard() {
           const sortedData = data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
           setPoems(sortedData);
           setLoading(false);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'bangla_poems');
+          setLoading(false);
         });
       } else {
         const q = query(collection(db, 'bangla_conjuncts'));
@@ -151,8 +195,41 @@ export default function AdminDashboard() {
           const sortedData = data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
           setConjuncts(sortedData);
           setLoading(false);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'bangla_conjuncts');
+          setLoading(false);
         });
       }
+    } else if (activeTab === 'students') {
+      const q = query(collection(db, 'students'), where('class', '==', selectedClass));
+      unsubscribeStudents = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setStudents(data);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'students');
+        setLoading(false);
+      });
+    } else if (activeTab === 'routine') {
+      const q = query(collection(db, 'routines'), where('class', '==', selectedClass));
+      unsubscribeRoutines = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRoutines(data);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'routines');
+        setLoading(false);
+      });
+    } else if (activeTab === 'mcqs') {
+      const q = query(collection(db, 'mcqs'), where('class', '==', selectedClass));
+      unsubscribeMcqs = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setMcqs(data);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'mcqs');
+        setLoading(false);
+      });
     }
 
     return () => {
@@ -161,6 +238,9 @@ export default function AdminDashboard() {
       unsubscribeQuizzes();
       unsubscribePoems();
       unsubscribeConjuncts();
+      unsubscribeStudents();
+      unsubscribeRoutines();
+      unsubscribeMcqs();
     };
   }, [selectedClass, activeTab, banglaTab, navigate]);
 
@@ -340,6 +420,90 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleStudentSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'students', editingId), {
+          ...studentFormData,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+        setIsAdding(false);
+      } else {
+        await addDoc(collection(db, 'students'), {
+          ...studentFormData,
+          authorId: auth.currentUser.uid,
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setStudentFormData({ name: '', class: 1, uniqueId: '' });
+      setSuccessMessage("Student saved successfully!");
+    } catch (err) {
+      console.error("Error saving student:", err);
+      setSuccessMessage("Error saving student.");
+    }
+  };
+
+  const handleRoutineSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'routines', editingId), {
+          ...routineFormData,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+        setIsAdding(false);
+      } else {
+        await addDoc(collection(db, 'routines'), {
+          ...routineFormData,
+          authorId: auth.currentUser.uid,
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setRoutineFormData({ class: 1, day: 'Sunday', subjects: '' });
+      setSuccessMessage("Routine saved successfully!");
+    } catch (err) {
+      console.error("Error saving routine:", err);
+      setSuccessMessage("Error saving routine.");
+    }
+  };
+
+  const handleMcqSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'mcqs', editingId), {
+          ...mcqFormData,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+        setIsAdding(false);
+      } else {
+        await addDoc(collection(db, 'mcqs'), {
+          ...mcqFormData,
+          authorId: auth.currentUser.uid,
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setMcqFormData({ class: 3, subject: 'society', question: '', options: ['', '', '', ''], correctAnswer: '' });
+      setSuccessMessage("MCQ saved successfully!");
+    } catch (err) {
+      console.error("Error saving MCQ:", err);
+      setSuccessMessage("Error saving MCQ.");
+    }
+  };
+
   const handleDiarySave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth.currentUser) return;
@@ -364,6 +528,7 @@ export default function AdminDashboard() {
       }
       setDiaryFormData({
         date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'),
+        studentId: '',
         subject: '',
         task: ''
       });
@@ -528,6 +693,41 @@ export default function AdminDashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const startStudentEdit = (student: any) => {
+    setEditingId(student.id);
+    setStudentFormData({
+      name: student.name,
+      class: student.class,
+      uniqueId: student.uniqueId
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startRoutineEdit = (routine: any) => {
+    setEditingId(routine.id);
+    setRoutineFormData({
+      class: routine.class,
+      day: routine.day,
+      subjects: routine.subjects
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startMcqEdit = (mcq: any) => {
+    setEditingId(mcq.id);
+    setMcqFormData({
+      class: mcq.class,
+      subject: mcq.subject,
+      question: mcq.question,
+      options: [...mcq.options],
+      correctAnswer: mcq.correctAnswer
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Seed Confirmation Modal */}
@@ -672,6 +872,7 @@ export default function AdminDashboard() {
               if (activeTab === 'diaries') {
                 setDiaryFormData({
                   date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'),
+                  studentId: '',
                   subject: '',
                   task: ''
                 });
@@ -689,12 +890,18 @@ export default function AdminDashboard() {
                 } else {
                   setConjunctFormData({ combined: '', broken: '', word: '' });
                 }
+              } else if (activeTab === 'students') {
+                setStudentFormData({ name: '', class: 1, uniqueId: '' });
+              } else if (activeTab === 'routine') {
+                setRoutineFormData({ class: 1, day: 'Sunday', subjects: '' });
+              } else if (activeTab === 'mcqs') {
+                setMcqFormData({ class: 3, subject: 'society', question: '', options: ['', '', '', ''], correctAnswer: '' });
               }
             }}
             className="premium-button-primary flex items-center justify-center space-x-2"
           >
             {isAdding ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-            <span>{isAdding ? "Cancel" : (activeTab === 'diaries' ? "Add New Diary" : activeTab === 'math' ? "Add New Quiz" : banglaTab === 'poems' ? "Add New Poem" : "Add New Conjunct")}</span>
+            <span>{isAdding ? "Cancel" : (activeTab === 'diaries' ? "Add New Diary" : activeTab === 'math' ? "Add New Quiz" : activeTab === 'bangla' ? (banglaTab === 'poems' ? "Add New Poem" : "Add New Conjunct") : activeTab === 'students' ? "Add New Student" : activeTab === 'routine' ? "Add New Routine" : "Add New MCQ")}</span>
           </button>
 
           <button 
@@ -735,6 +942,33 @@ export default function AdminDashboard() {
           )}
         >
           Bangla Section
+        </button>
+        <button
+          onClick={() => { setActiveTab('students'); setIsAdding(false); setEditingId(null); setLoading(true); }}
+          className={cn(
+            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
+            activeTab === 'students' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
+          )}
+        >
+          Students
+        </button>
+        <button
+          onClick={() => { setActiveTab('routine'); setIsAdding(false); setEditingId(null); setLoading(true); }}
+          className={cn(
+            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
+            activeTab === 'routine' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
+          )}
+        >
+          Routine
+        </button>
+        <button
+          onClick={() => { setActiveTab('mcqs'); setIsAdding(false); setEditingId(null); setLoading(true); }}
+          className={cn(
+            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
+            activeTab === 'mcqs' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
+          )}
+        >
+          MCQs
         </button>
       </div>
 
@@ -879,7 +1113,7 @@ export default function AdminDashboard() {
                       <span>{editingId ? "Edit Diary Entry" : "Create New Diary Entry"}</span>
                     </h2>
                     <form onSubmit={handleDiarySave} className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
                           <input 
@@ -889,6 +1123,20 @@ export default function AdminDashboard() {
                             onChange={(e) => setDiaryFormData({...diaryFormData, date: e.target.value})}
                             className="premium-input"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Student</label>
+                          <select
+                            required
+                            value={diaryFormData.studentId}
+                            onChange={(e) => setDiaryFormData({...diaryFormData, studentId: e.target.value})}
+                            className="premium-input"
+                          >
+                            <option value="">Select Student</option>
+                            {students.map(student => (
+                              <option key={student.id} value={student.id}>{student.name} (ID: {student.uniqueId})</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Subject</label>
@@ -1008,51 +1256,209 @@ export default function AdminDashboard() {
                       </div>
                     </form>
                   </>
-                ) : banglaTab === 'poems' ? (
+                ) : activeTab === 'bangla' ? (
+                  banglaTab === 'poems' ? (
+                    <>
+                      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                        <BookOpen className="text-purple-500 h-6 w-6" />
+                        <span>{editingId ? "Edit Poem" : "Add New Poem"}</span>
+                      </h2>
+                      <form onSubmit={handlePoemSave} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                            <input 
+                              type="text"
+                              required
+                              placeholder="e.g. আমাদের ছোট নদী"
+                              value={poemFormData.title}
+                              onChange={(e) => setPoemFormData({...poemFormData, title: e.target.value})}
+                              className="premium-input"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Author (Optional)</label>
+                            <input 
+                              type="text"
+                              placeholder="e.g. রবীন্দ্রনাথ ঠাকুর"
+                              value={poemFormData.author}
+                              onChange={(e) => setPoemFormData({...poemFormData, author: e.target.value})}
+                              className="premium-input"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Content</label>
+                          <textarea 
+                            required
+                            rows={6}
+                            placeholder="Enter poem content here..."
+                            value={poemFormData.content}
+                            onChange={(e) => setPoemFormData({...poemFormData, content: e.target.value})}
+                            className="premium-input resize-none"
+                          />
+                        </div>
+                        <div className="flex justify-end space-x-4">
+                          <button type="submit" className="premium-button-primary bg-purple-500 hover:bg-purple-600 shadow-purple-200 flex items-center space-x-2">
+                            <Save className="h-5 w-5" />
+                            <span>{editingId ? "Update Poem" : "Save Poem"}</span>
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                        <BookOpen className="text-green-500 h-6 w-6" />
+                        <span>{editingId ? "Edit Conjunct" : "Add New Conjunct"}</span>
+                      </h2>
+                      <form onSubmit={handleConjunctSave} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Combined Form</label>
+                            <input 
+                              type="text"
+                              required
+                              placeholder="e.g. ক্ক"
+                              value={conjunctFormData.combined}
+                              onChange={(e) => setConjunctFormData({...conjunctFormData, combined: e.target.value})}
+                              className="premium-input"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Broken Form</label>
+                            <input 
+                              type="text"
+                              required
+                              placeholder="e.g. ক + ক"
+                              value={conjunctFormData.broken}
+                              onChange={(e) => setConjunctFormData({...conjunctFormData, broken: e.target.value})}
+                              className="premium-input"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Example Word</label>
+                            <input 
+                              type="text"
+                              required
+                              placeholder="e.g. চক্কর"
+                              value={conjunctFormData.word}
+                              onChange={(e) => setConjunctFormData({...conjunctFormData, word: e.target.value})}
+                              className="premium-input"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end space-x-4">
+                          <button type="submit" className="premium-button-primary bg-green-500 hover:bg-green-600 shadow-green-200 flex items-center space-x-2">
+                            <Save className="h-5 w-5" />
+                            <span>{editingId ? "Update Conjunct" : "Save Conjunct"}</span>
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )
+                ) : activeTab === 'students' ? (
                   <>
                     <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
-                      <BookOpen className="text-purple-500 h-6 w-6" />
-                      <span>{editingId ? "Edit Poem" : "Add New Poem"}</span>
+                      <BookOpen className="text-blue-500 h-6 w-6" />
+                      <span>{editingId ? "Edit Student" : "Add New Student"}</span>
                     </h2>
-                    <form onSubmit={handlePoemSave} className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <form onSubmit={handleStudentSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Name</label>
                           <input 
                             type="text"
                             required
-                            placeholder="e.g. আমাদের ছোট নদী"
-                            value={poemFormData.title}
-                            onChange={(e) => setPoemFormData({...poemFormData, title: e.target.value})}
+                            placeholder="e.g. John Doe"
+                            value={studentFormData.name}
+                            onChange={(e) => setStudentFormData({...studentFormData, name: e.target.value})}
                             className="premium-input"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Author (Optional)</label>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Class</label>
+                          <select
+                            required
+                            value={studentFormData.class}
+                            onChange={(e) => setStudentFormData({...studentFormData, class: parseInt(e.target.value)})}
+                            className="premium-input"
+                          >
+                            {[...Array(10)].map((_, i) => (
+                              <option key={i + 1} value={i + 1}>Class {i + 1}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Unique ID</label>
                           <input 
                             type="text"
-                            placeholder="e.g. রবীন্দ্রনাথ ঠাকুর"
-                            value={poemFormData.author}
-                            onChange={(e) => setPoemFormData({...poemFormData, author: e.target.value})}
+                            required
+                            placeholder="e.g. STU-001"
+                            value={studentFormData.uniqueId}
+                            onChange={(e) => setStudentFormData({...studentFormData, uniqueId: e.target.value})}
                             className="premium-input"
                           />
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Content</label>
-                        <textarea 
-                          required
-                          rows={6}
-                          placeholder="Enter poem content here..."
-                          value={poemFormData.content}
-                          onChange={(e) => setPoemFormData({...poemFormData, content: e.target.value})}
-                          className="premium-input resize-none"
-                        />
+                      <div className="flex justify-end space-x-4">
+                        <button type="submit" className="premium-button-primary bg-blue-500 hover:bg-blue-600 shadow-blue-200 flex items-center space-x-2">
+                          <Save className="h-5 w-5" />
+                          <span>{editingId ? "Update Student" : "Save Student"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                ) : activeTab === 'routine' ? (
+                  <>
+                    <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                      <Calendar className="text-orange-500 h-6 w-6" />
+                      <span>{editingId ? "Edit Routine" : "Add New Routine"}</span>
+                    </h2>
+                    <form onSubmit={handleRoutineSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Class</label>
+                          <select
+                            required
+                            value={routineFormData.class}
+                            onChange={(e) => setRoutineFormData({...routineFormData, class: parseInt(e.target.value)})}
+                            className="premium-input"
+                          >
+                            {[...Array(10)].map((_, i) => (
+                              <option key={i + 1} value={i + 1}>Class {i + 1}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Day</label>
+                          <select
+                            required
+                            value={routineFormData.day}
+                            onChange={(e) => setRoutineFormData({...routineFormData, day: e.target.value})}
+                            className="premium-input"
+                          >
+                            {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => (
+                              <option key={day} value={day}>{day}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Subjects (comma separated)</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. Math, English, Science"
+                            value={routineFormData.subjects}
+                            onChange={(e) => setRoutineFormData({...routineFormData, subjects: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
                       </div>
                       <div className="flex justify-end space-x-4">
-                        <button type="submit" className="premium-button-primary bg-purple-500 hover:bg-purple-600 shadow-purple-200 flex items-center space-x-2">
+                        <button type="submit" className="premium-button-primary bg-orange-500 hover:bg-orange-600 shadow-orange-200 flex items-center space-x-2">
                           <Save className="h-5 w-5" />
-                          <span>{editingId ? "Update Poem" : "Save Poem"}</span>
+                          <span>{editingId ? "Update Routine" : "Save Routine"}</span>
                         </button>
                       </div>
                     </form>
@@ -1060,49 +1466,82 @@ export default function AdminDashboard() {
                 ) : (
                   <>
                     <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
-                      <BookOpen className="text-green-500 h-6 w-6" />
-                      <span>{editingId ? "Edit Conjunct" : "Add New Conjunct"}</span>
+                      <CheckCircle2 className="text-indigo-500 h-6 w-6" />
+                      <span>{editingId ? "Edit MCQ" : "Add New MCQ"}</span>
                     </h2>
-                    <form onSubmit={handleConjunctSave} className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <form onSubmit={handleMcqSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Combined Form</label>
-                          <input 
-                            type="text"
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Class</label>
+                          <select
                             required
-                            placeholder="e.g. ক্ক"
-                            value={conjunctFormData.combined}
-                            onChange={(e) => setConjunctFormData({...conjunctFormData, combined: e.target.value})}
+                            value={mcqFormData.class}
+                            onChange={(e) => setMcqFormData({...mcqFormData, class: parseInt(e.target.value)})}
                             className="premium-input"
-                          />
+                          >
+                            {[...Array(10)].map((_, i) => (
+                              <option key={i + 1} value={i + 1}>Class {i + 1}</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Broken Form</label>
-                          <input 
-                            type="text"
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Subject</label>
+                          <select
                             required
-                            placeholder="e.g. ক + ক"
-                            value={conjunctFormData.broken}
-                            onChange={(e) => setConjunctFormData({...conjunctFormData, broken: e.target.value})}
+                            value={mcqFormData.subject}
+                            onChange={(e) => setMcqFormData({...mcqFormData, subject: e.target.value})}
                             className="premium-input"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Example Word</label>
-                          <input 
-                            type="text"
-                            required
-                            placeholder="e.g. চক্কর"
-                            value={conjunctFormData.word}
-                            onChange={(e) => setConjunctFormData({...conjunctFormData, word: e.target.value})}
-                            className="premium-input"
-                          />
+                          >
+                            <option value="society">Social Studies</option>
+                            <option value="science">Science</option>
+                            <option value="religion">Religion</option>
+                          </select>
                         </div>
                       </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Question</label>
+                        <textarea 
+                          required
+                          rows={2}
+                          placeholder="Enter question here..."
+                          value={mcqFormData.question}
+                          onChange={(e) => setMcqFormData({...mcqFormData, question: e.target.value})}
+                          className="premium-input resize-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {mcqFormData.options.map((opt, idx) => (
+                          <div key={idx}>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">Option {idx + 1}</label>
+                            <input 
+                              type="text"
+                              required
+                              value={opt}
+                              onChange={(e) => {
+                                const newOpts = [...mcqFormData.options];
+                                newOpts[idx] = e.target.value;
+                                setMcqFormData({...mcqFormData, options: newOpts});
+                              }}
+                              className="premium-input text-sm"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Correct Answer (Must match one of the options)</label>
+                        <input 
+                          type="text"
+                          required
+                          value={mcqFormData.correctAnswer}
+                          onChange={(e) => setMcqFormData({...mcqFormData, correctAnswer: e.target.value})}
+                          className="premium-input"
+                          placeholder="Copy the correct option here"
+                        />
+                      </div>
                       <div className="flex justify-end space-x-4">
-                        <button type="submit" className="premium-button-primary bg-green-500 hover:bg-green-600 shadow-green-200 flex items-center space-x-2">
+                        <button type="submit" className="premium-button-primary bg-indigo-500 hover:bg-indigo-600 shadow-indigo-200 flex items-center space-x-2">
                           <Save className="h-5 w-5" />
-                          <span>{editingId ? "Update Conjunct" : "Save Conjunct"}</span>
+                          <span>{editingId ? "Update MCQ" : "Save MCQ"}</span>
                         </button>
                       </div>
                     </form>
@@ -1115,10 +1554,10 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-display font-bold">
-                {activeTab === 'diaries' ? `Recent Diaries for Class ${selectedClass}` : activeTab === 'math' ? "Recent Math Quizzes" : banglaTab === 'poems' ? "Recent Poems" : "Recent Conjuncts"}
+                {activeTab === 'diaries' ? `Recent Diaries for Class ${selectedClass}` : activeTab === 'math' ? "Recent Math Quizzes" : activeTab === 'bangla' ? (banglaTab === 'poems' ? "Recent Poems" : "Recent Conjuncts") : activeTab === 'students' ? `Students in Class ${selectedClass}` : activeTab === 'routine' ? `Routine for Class ${selectedClass}` : `MCQs for Class ${selectedClass}`}
               </h2>
               <span className="text-sm text-text-muted font-medium">
-                {activeTab === 'diaries' ? diaries.length : activeTab === 'math' ? quizzes.length : banglaTab === 'poems' ? poems.length : conjuncts.length} entries found
+                {activeTab === 'diaries' ? diaries.length : activeTab === 'math' ? quizzes.length : activeTab === 'bangla' ? (banglaTab === 'poems' ? poems.length : conjuncts.length) : activeTab === 'students' ? students.length : activeTab === 'routine' ? routines.length : mcqs.length} entries found
               </span>
             </div>
 
@@ -1149,6 +1588,11 @@ export default function AdminDashboard() {
                             <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-bold rounded-full uppercase tracking-wider">{diary.subject}</span>
                           </div>
                           <p className="text-text-muted line-clamp-2">{diary.task}</p>
+                          {diary.studentId && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Assigned to: {students.find(s => s.id === diary.studentId)?.name || 'Unknown Student'}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -1190,7 +1634,7 @@ export default function AdminDashboard() {
               ) : (
                 <EmptyState message="No math quizzes found" />
               )
-            ) : (
+            ) : activeTab === 'bangla' ? (
               banglaTab === 'poems' ? (
                 poems.length > 0 ? (
                   <div className="grid grid-cols-1 gap-4">
@@ -1244,6 +1688,86 @@ export default function AdminDashboard() {
                 ) : (
                   <EmptyState message="No conjuncts found" />
                 )
+              )
+            ) : activeTab === 'students' ? (
+              students.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {students.map((student) => (
+                    <motion.div layout key={student.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                      <div className="flex items-start space-x-4">
+                        <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-blue-50 transition-colors">
+                          <BookOpen className="h-6 w-6 text-text-muted group-hover:text-blue-500 transition-colors" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-3 mb-1">
+                            <span className="font-display font-bold text-lg">{student.name}</span>
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">ID: {student.uniqueId}</span>
+                          </div>
+                          <p className="text-sm text-text-muted">Class: {student.class}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => startStudentEdit(student)} className="p-3 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                        <button onClick={() => handleDelete('students', student.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No students found" />
+              )
+            ) : activeTab === 'routine' ? (
+              routines.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {routines.map((routine) => (
+                    <motion.div layout key={routine.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                      <div className="flex items-start space-x-4">
+                        <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-orange-50 transition-colors">
+                          <Calendar className="h-6 w-6 text-text-muted group-hover:text-orange-500 transition-colors" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-3 mb-1">
+                            <span className="font-display font-bold text-lg">{routine.day}</span>
+                          </div>
+                          <p className="text-sm text-text-muted">Subjects: {routine.subjects}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => startRoutineEdit(routine)} className="p-3 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                        <button onClick={() => handleDelete('routines', routine.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No routines found" />
+              )
+            ) : (
+              mcqs.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {mcqs.map((mcq) => (
+                    <motion.div layout key={mcq.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                      <div className="flex items-start space-x-4">
+                        <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-indigo-50 transition-colors">
+                          <CheckCircle2 className="h-6 w-6 text-text-muted group-hover:text-indigo-500 transition-colors" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-3 mb-1">
+                            <span className="font-display font-bold text-lg">{mcq.question}</span>
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full uppercase tracking-wider">{mcq.subject}</span>
+                          </div>
+                          <p className="text-sm text-text-muted">Correct: {mcq.correctAnswer}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => startMcqEdit(mcq)} className="p-3 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                        <button onClick={() => handleDelete('mcqs', mcq.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No MCQs found" />
               )
             )}
           </div>

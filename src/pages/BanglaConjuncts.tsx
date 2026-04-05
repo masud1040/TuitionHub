@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, query, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 interface Conjunct {
   id: string;
@@ -27,7 +27,7 @@ export default function BanglaConjuncts() {
         })) as Conjunct[];
         setConjuncts(fetchedConjuncts);
       } catch (error) {
-        console.error("Error fetching conjuncts:", error);
+        handleFirestoreError(error, OperationType.GET, 'bangla_conjuncts');
       } finally {
         setLoading(false);
       }

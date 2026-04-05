@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Calculator, ArrowLeft, Timer, CheckCircle2, XCircle, Play, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, query, where, getDocs, limit, addDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { toBanglaNumber } from '../lib/banglaUtils';
 import { cn } from '../lib/utils';
 
@@ -82,7 +82,7 @@ export default function GeneralMathQuiz() {
       setScore(0);
       setTimeLeft(timePerQuestion);
     } catch (error) {
-      console.error("Error starting quiz:", error);
+      handleFirestoreError(error, OperationType.GET, 'math_quizzes');
       setSuccessMessage("কুইজ শুরু করতে সমস্যা হয়েছে।");
     }
   };

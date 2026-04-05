@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, query, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 interface Poem {
   id: string;
@@ -28,7 +28,7 @@ export default function BanglaPoems() {
         })) as Poem[];
         setPoems(fetchedPoems);
       } catch (error) {
-        console.error("Error fetching poems:", error);
+        handleFirestoreError(error, OperationType.GET, 'bangla_poems');
       } finally {
         setLoading(false);
       }

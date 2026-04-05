@@ -50,5 +50,23 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
+
+    // Student Rules
+    match /students/{studentId} {
+      allow read: if true; // Allow reading for login verification
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Routine Rules
+    match /routines/{routineId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // MCQ Rules
+    match /mcqs/{mcqId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
   }
 }

@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import StudentView from './pages/StudentView';
-import AdminLogin from './pages/AdminLogin';
+import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import SubjectPage from './pages/SubjectPage';
 import MathHome from './pages/MathHome';
@@ -58,7 +58,7 @@ export default function App() {
           <Route path="/bangla/poems" element={<BanglaPoems />} />
           <Route path="/bangla/conjuncts" element={<BanglaConjuncts />} />
           <Route path="/english" element={<SubjectPage name="English" />} />
-          <Route path="/login" element={<AdminLogin />} />
+          <Route path="/login" element={<Login />} />
           <Route 
             path="/admin" 
             element={
