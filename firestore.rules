@@ -12,9 +12,10 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' ||
-         request.auth.token.email == "saifulalammasudmn@gmail.com");
+        (request.auth.token.email == "saifulalammasudmn@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher')));
     }
 
     // User Rules
@@ -28,6 +29,14 @@ service cloud.firestore {
       // Students can read all diaries without login
       allow read: if true;
       // Only admins/teachers can write diaries
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Math Quiz Rules
+    match /math_quizzes/{quizId} {
+      // Students can read all math quizzes without login
+      allow read: if true;
+      // Only admins/teachers can write math quizzes
       allow create, update, delete: if isAdmin();
     }
   }

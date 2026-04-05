@@ -25,6 +25,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["date", "class", "subject", "task", "authorId"]
+    },
+    "MathQuiz": {
+      "title": "MathQuiz",
+      "description": "Represents a math question (general or word problem).",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["general", "word_problem"] },
+        "category": { "type": "string", "enum": ["addition", "subtraction", "multiplication", "division", "word"] },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctAnswer": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "category", "question", "options", "correctAnswer", "authorId"]
     }
   },
   "firestore": {
@@ -35,6 +50,10 @@
     "/diaries/{diaryId}": {
       "schema": "Diary",
       "description": "Daily homework entries."
+    },
+    "/math_quizzes/{quizId}": {
+      "schema": "MathQuiz",
+      "description": "Math quiz questions."
     }
   }
 }

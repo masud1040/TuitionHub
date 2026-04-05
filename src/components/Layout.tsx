@@ -1,11 +1,14 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { GraduationCap, BookOpen, LayoutDashboard, LogOut } from 'lucide-react';
+import { GraduationCap, BookOpen, LayoutDashboard, LogOut, Menu, X as CloseIcon } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '../lib/utils';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -15,6 +18,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     });
     return () => unsubscribe();
   }, []);
+
+  React.useEffect(() => {
+    setIsMenuOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     console.log("Logging out from Layout...");
@@ -91,25 +98,99 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               )}
             </nav>
 
-            {/* Mobile Menu Button (Simplified) */}
-            <div className="md:hidden flex items-center space-x-2">
-              {user ? (
-                <>
-                  <Link to="/admin" className="p-2 text-primary">
-                    <LayoutDashboard className="h-6 w-6" />
-                  </Link>
-                  <button onClick={handleLogout} className="p-2 text-red-500">
-                    <LogOut className="h-6 w-6" />
-                  </button>
-                </>
-              ) : (
-                <Link to="/login" className="p-2 text-gray-500">
-                  <LayoutDashboard className="h-6 w-6" />
-                </Link>
-              )}
+            {/* Mobile Menu Button */}
+            <div className="md:hidden flex items-center">
+              <button 
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {isMenuOpen ? <CloseIcon className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden bg-white border-b border-gray-100 overflow-hidden"
+            >
+              <div className="px-4 pt-2 pb-6 space-y-2">
+                <Link 
+                  to="/math" 
+                  className={cn(
+                    "block px-4 py-3 rounded-xl font-medium transition-colors",
+                    location.pathname === '/math' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                  )}
+                >
+                  Math
+                </Link>
+                <Link 
+                  to="/bangla" 
+                  className={cn(
+                    "block px-4 py-3 rounded-xl font-medium transition-colors",
+                    location.pathname === '/bangla' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                  )}
+                >
+                  Bangla
+                </Link>
+                <Link 
+                  to="/english" 
+                  className={cn(
+                    "block px-4 py-3 rounded-xl font-medium transition-colors",
+                    location.pathname === '/english' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                  )}
+                >
+                  English
+                </Link>
+                <Link 
+                  to="/" 
+                  className={cn(
+                    "block px-4 py-3 rounded-xl font-medium transition-colors",
+                    location.pathname === '/' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                  )}
+                >
+                  Diary
+                </Link>
+                
+                <div className="pt-4 border-t border-gray-100">
+                  {user ? (
+                    <div className="space-y-2">
+                      <Link 
+                        to="/admin" 
+                        className={cn(
+                          "flex items-center space-x-3 px-4 py-3 rounded-xl font-medium transition-colors",
+                          location.pathname === '/admin' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                        )}
+                      >
+                        <LayoutDashboard className="h-5 w-5" />
+                        <span>Dashboard</span>
+                      </Link>
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-medium text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <LogOut className="h-5 w-5" />
+                        <span>Logout</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <Link 
+                      to="/login" 
+                      className="block w-full premium-button-primary py-3 px-5 text-center"
+                    >
+                      Teacher Login
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       <main className="flex-grow">

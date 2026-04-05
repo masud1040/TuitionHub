@@ -4,6 +4,11 @@ import StudentView from './pages/StudentView';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import SubjectPage from './pages/SubjectPage';
+import MathHome from './pages/MathHome';
+import GeneralMathQuiz from './pages/GeneralMathQuiz';
+import MultiplicationTableQuiz from './pages/MultiplicationTableQuiz';
+import WordProblemQuiz from './pages/WordProblemQuiz';
+import NumberGame from './pages/NumberGame';
 import { auth } from './lib/firebase';
 import React from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -37,7 +42,11 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<StudentView />} />
-          <Route path="/math" element={<SubjectPage name="Math" />} />
+          <Route path="/math" element={<MathHome />} />
+          <Route path="/math/general" element={<GeneralMathQuiz />} />
+          <Route path="/math/tables" element={<MultiplicationTableQuiz />} />
+          <Route path="/math/problems" element={<WordProblemQuiz />} />
+          <Route path="/math/number-game" element={<NumberGame />} />
           <Route path="/bangla" element={<SubjectPage name="Bangla" />} />
           <Route path="/english" element={<SubjectPage name="English" />} />
           <Route path="/login" element={<AdminLogin />} />
