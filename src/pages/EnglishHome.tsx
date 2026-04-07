@@ -86,6 +86,14 @@ export default function EnglishHome() {
           icon: Gamepad2,
           color: 'bg-orange-500',
           path: '/game'
+        },
+        {
+          id: 'simple-test',
+          title: 'Simple Test',
+          description: 'Test your knowledge (A for...?)',
+          icon: CheckCircle2,
+          color: 'bg-red-500',
+          path: '/simple-quiz?subject=English'
         }
       ];
     }

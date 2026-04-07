@@ -19,6 +19,7 @@ import EnglishWords from './pages/EnglishWords';
 import EnglishAlphabet from './pages/EnglishAlphabet';
 import EnglishRhymes from './pages/EnglishRhymes';
 import BubblePopGame from './pages/BubblePopGame';
+import SimpleQuiz from './pages/SimpleQuiz';
 import { auth } from './lib/firebase';
 import React from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="/english/words" element={<SubjectRoute><EnglishWords /></SubjectRoute>} />
           <Route path="/english/rhymes" element={<SubjectRoute><EnglishRhymes /></SubjectRoute>} />
           <Route path="/game" element={<BubblePopGame />} />
+          <Route path="/simple-quiz" element={<SimpleQuiz />} />
           
           <Route path="/login" element={<Login />} />
           <Route 

@@ -61,11 +61,36 @@ export default function BubblePopGame() {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<number>();
 
+  useEffect(() => {
+    // Prime the voices
+    const loadVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+    loadVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
   const speak = useCallback((text: string) => {
+    if (!window.speechSynthesis) return;
+    
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = mode === 'en' ? 'en-US' : 'bn-BD';
-    utterance.rate = 0.9;
-    window.speechSynthesis.cancel();
+    utterance.rate = 1.0; // Slightly faster for better response
+    utterance.pitch = 1.1; // Slightly higher for kid-friendly tone
+    
+    // Important: Some browsers need a voice to be explicitly set
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      // Try to find a good voice for the language
+      const preferredVoice = voices.find(v => v.lang.startsWith(mode === 'en' ? 'en' : 'bn'));
+      if (preferredVoice) utterance.voice = preferredVoice;
+    }
+
     window.speechSynthesis.speak(utterance);
   }, [mode]);
 
@@ -366,9 +391,13 @@ export default function BubblePopGame() {
                   height: bubble.size 
                 }}
                 className={cn(
-                  "absolute rounded-full flex items-center justify-center text-white font-bold shadow-lg border-4 border-white/30 backdrop-blur-[2px] transition-transform active:scale-95",
+                  "absolute rounded-full flex items-center justify-center text-white font-bold shadow-lg border-4 border-white/30 backdrop-blur-[2px] transition-transform active:scale-110 z-30 touch-none",
                   bubble.color
                 )}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  popBubble(bubble);
+                }}
               >
                 <span className={cn(
                   "drop-shadow-md",

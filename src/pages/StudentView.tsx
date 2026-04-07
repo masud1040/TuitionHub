@@ -41,6 +41,7 @@ export default function StudentView() {
   const [isAddingWriting, setIsAddingWriting] = useState(false);
   const [writingFormData, setWritingFormData] = useState({ type: 'paragraph', title: '', content: '' });
   const [selectedWriting, setSelectedWriting] = useState<any>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ collection: string, id: string } | null>(null);
 
   // Quiz Test states
   const [quizSettings, setQuizSettings] = useState({
@@ -226,12 +227,13 @@ export default function StudentView() {
     }
   };
 
-  const handleDelete = async (collectionName: string, id: string) => {
-    if (!confirm('Are you sure you want to delete this?')) return;
+  const handleDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, collectionName, id));
+      await deleteDoc(doc(db, itemToDelete.collection, itemToDelete.id));
+      setItemToDelete(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, collectionName);
+      handleFirestoreError(error, OperationType.DELETE, itemToDelete.collection);
     }
   };
 
@@ -954,7 +956,7 @@ export default function StudentView() {
                     <h3 className="text-lg font-bold text-gray-900">{formula.title}</h3>
                     {studentSession && formula.authorId === studentSession.uid && (
                       <button 
-                        onClick={() => handleDelete('formulas', formula.id)}
+                        onClick={() => setItemToDelete({ collection: 'formulas', id: formula.id })}
                         className="text-red-400 hover:text-red-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1066,7 +1068,7 @@ export default function StudentView() {
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete('writing_content', item.id);
+                          setItemToDelete({ collection: 'writing_content', id: item.id });
                         }}
                         className="text-red-400 hover:text-red-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
@@ -1139,6 +1141,44 @@ export default function StudentView() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {itemToDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl"
+            >
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Are you sure?</h3>
+              <p className="text-text-muted mb-8">This action cannot be undone. This item will be permanently deleted.</p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setItemToDelete(null)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-200"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

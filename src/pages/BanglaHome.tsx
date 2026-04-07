@@ -94,6 +94,14 @@ export default function BanglaHome() {
           icon: Gamepad2,
           color: 'bg-orange-500',
           path: '/game'
+        },
+        {
+          id: 'simple-test',
+          title: 'সহজ কুইজ',
+          description: 'আপনার মেধা যাচাই করুন (অ তে কি...?)',
+          icon: CheckCircle2,
+          color: 'bg-red-500',
+          path: '/simple-quiz?subject=Bangla'
         }
       ];
     }
