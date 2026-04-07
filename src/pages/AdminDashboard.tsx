@@ -1,13 +1,14 @@
 import React from 'react';
-import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateDoc, Timestamp, getDoc, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { format, startOfToday, addDays } from 'date-fns';
-import { Plus, Trash2, Edit2, Save, X, LayoutDashboard, Calendar, BookOpen, CheckCircle2, Eye, LogOut, Calculator } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, LayoutDashboard, Calendar, BookOpen, CheckCircle2, Eye, LogOut, Calculator, BarChart3, Users, FileText, Settings, Clock, Search, Menu, GraduationCap, Sigma, PenTool, Filter, Feather } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { toBanglaNumber } from '../lib/banglaUtils';
 import { useNavigate, Link } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
 interface DiaryEntry {
   id: string;
@@ -31,23 +32,35 @@ interface QuizEntry {
 
 export default function AdminDashboard() {
   const [seedConfirm, setSeedConfirm] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'diaries' | 'math' | 'bangla' | 'students' | 'routine' | 'mcqs'>('diaries');
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'diaries' | 'math' | 'bangla' | 'english' | 'students' | 'routine' | 'mcqs' | 'formulas' | 'writing' | 'settings' | 'rhymes'>('overview');
   const [banglaTab, setBanglaTab] = React.useState<'poems' | 'conjuncts'>('poems');
   const [mathFilter, setMathFilter] = React.useState<'all' | 'general' | 'word_problem'>('all');
   const [selectedClass, setSelectedClass] = React.useState<number>(1);
   const [diaries, setDiaries] = React.useState<DiaryEntry[]>([]);
   const [quizzes, setQuizzes] = React.useState<QuizEntry[]>([]);
+  const [stats, setStats] = React.useState<any[]>([]);
+  const [chartData, setChartData] = React.useState<any[]>([]);
   const [poems, setPoems] = React.useState<any[]>([]);
   const [conjuncts, setConjuncts] = React.useState<any[]>([]);
+  const [rhymes, setRhymes] = React.useState<any[]>([]);
   const [students, setStudents] = React.useState<any[]>([]);
   const [routines, setRoutines] = React.useState<any[]>([]);
   const [mcqs, setMcqs] = React.useState<any[]>([]);
+  const [formulas, setFormulas] = React.useState<any[]>([]);
+  const [writingContent, setWritingContent] = React.useState<any[]>([]);
+  const [classSettings, setClassSettings] = React.useState<any[]>([]);
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [deleteConfirm, setDeleteConfirm] = React.useState<{ collection: string, id: string } | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth > 1024);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
+
+  // Settings State
+  const [newSectionName, setNewSectionName] = React.useState('');
+  const [selectedSubject, setSelectedSubject] = React.useState('english');
 
   React.useEffect(() => {
     if (successMessage) {
@@ -86,6 +99,12 @@ export default function AdminDashboard() {
     word: ''
   });
 
+  const [rhymeFormData, setRhymeFormData] = React.useState({
+    title: '',
+    content: '',
+    videoUrl: ''
+  });
+
   // Student Form State
   const [studentFormData, setStudentFormData] = React.useState({
     name: '',
@@ -109,10 +128,40 @@ export default function AdminDashboard() {
     correctAnswer: ''
   });
 
+  // Formula Form State
+  const [formulaFormData, setFormulaFormData] = React.useState({
+    title: '',
+    content: '',
+    class: 6,
+    studentId: 'all' // 'all' or specific student ID
+  });
+
+  // Writing Form State
+  const [writingFormData, setWritingFormData] = React.useState({
+    title: '',
+    content: '',
+    type: 'paragraph' as 'paragraph' | 'story' | 'dialogue' | 'composition' | 'letter' | 'email',
+    class: 6,
+    studentId: 'all' // 'all' or specific student ID
+  });
+
   React.useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (!user) {
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      if (!user || user.isAnonymous) {
         navigate('/login');
+        return;
+      }
+      
+      // Check if user is in users collection (teacher/admin)
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (!userDoc.exists()) {
+          // Not a teacher/admin, redirect to home
+          navigate('/');
+        }
+      } catch (error) {
+        console.error("Error checking user role:", error);
+        navigate('/');
       }
     });
 
@@ -123,8 +172,68 @@ export default function AdminDashboard() {
     let unsubscribeStudents = () => {};
     let unsubscribeRoutines = () => {};
     let unsubscribeMcqs = () => {};
+    let unsubscribeFormulas = () => {};
+    let unsubscribeWriting = () => {};
+    let unsubscribeSettings = () => {};
+    let unsubscribeRhymes = () => {};
 
-    if (activeTab === 'diaries') {
+    const settingsQ = query(collection(db, 'class_settings'));
+    unsubscribeSettings = onSnapshot(settingsQ, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClassSettings(data);
+    });
+
+    // Fetch all counts for overview
+    const fetchOverviewData = async () => {
+      if (activeTab !== 'overview') return;
+      setLoading(true);
+      try {
+        const collections = ['diaries', 'math_quizzes', 'students', 'routines', 'mcqs', 'formulas', 'writing_content'];
+        const counts: Record<string, number> = {};
+        
+        for (const col of collections) {
+          const snapshot = await getDocs(collection(db, col));
+          counts[col] = snapshot.size;
+        }
+        
+        setStats([
+          { name: 'Diaries', value: counts['diaries'] || 0, icon: BookOpen, color: 'bg-emerald-500' },
+          { name: 'Quizzes', value: counts['math_quizzes'] || 0, icon: Calculator, color: 'bg-blue-500' },
+          { name: 'Students', value: counts['students'] || 0, icon: GraduationCap, color: 'bg-purple-500' },
+          { name: 'Routines', value: counts['routines'] || 0, icon: Calendar, color: 'bg-orange-500' },
+          { name: 'MCQs', value: counts['mcqs'] || 0, icon: CheckCircle2, color: 'bg-indigo-500' },
+          { name: 'Formulas', value: counts['formulas'] || 0, icon: Sigma, color: 'bg-pink-500' },
+          { name: 'Writing', value: counts['writing_content'] || 0, icon: PenTool, color: 'bg-teal-500' },
+        ]);
+
+        setChartData([
+          { name: 'Diaries', value: counts['diaries'] || 0 },
+          { name: 'Quizzes', value: counts['math_quizzes'] || 0 },
+          { name: 'Students', value: counts['students'] || 0 },
+          { name: 'MCQs', value: counts['mcqs'] || 0 },
+          { name: 'Writing', value: counts['writing_content'] || 0 },
+        ]);
+      } catch (error) {
+        console.error("Error fetching overview data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (activeTab === 'overview') {
+      fetchOverviewData();
+    } else if (activeTab === 'rhymes') {
+      const q = query(collection(db, 'english_rhymes'));
+      unsubscribeRhymes = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const sortedData = data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setRhymes(sortedData);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'english_rhymes');
+        setLoading(false);
+      });
+    } else if (activeTab === 'diaries') {
       const q = query(
         collection(db, 'diaries'),
         where('class', '==', selectedClass)
@@ -230,6 +339,26 @@ export default function AdminDashboard() {
         handleFirestoreError(error, OperationType.LIST, 'mcqs');
         setLoading(false);
       });
+    } else if (activeTab === 'formulas') {
+      const q = query(collection(db, 'formulas'), where('class', '==', selectedClass));
+      unsubscribeFormulas = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setFormulas(data);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'formulas');
+        setLoading(false);
+      });
+    } else if (activeTab === 'writing') {
+      const q = query(collection(db, 'writing_content'), where('class', '==', selectedClass));
+      unsubscribeWriting = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setWritingContent(data);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'writing_content');
+        setLoading(false);
+      });
     }
 
     return () => {
@@ -241,8 +370,46 @@ export default function AdminDashboard() {
       unsubscribeStudents();
       unsubscribeRoutines();
       unsubscribeMcqs();
+      unsubscribeFormulas();
+      unsubscribeWriting();
+      unsubscribeSettings();
+      unsubscribeRhymes();
     };
   }, [selectedClass, activeTab, banglaTab, navigate]);
+
+  const handleToggleSection = async (cls: number, subject: string, section: string) => {
+    const setting = classSettings.find(s => s.class === cls && s.subject === subject);
+    try {
+      if (setting) {
+        const enabled = setting.enabledSections || [];
+        const newEnabled = enabled.includes(section)
+          ? enabled.filter((s: string) => s !== section)
+          : [...enabled, section];
+        
+        await updateDoc(doc(db, 'class_settings', setting.id), {
+          enabledSections: newEnabled,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await addDoc(collection(db, 'class_settings'), {
+          class: cls,
+          subject,
+          enabledSections: [section],
+          updatedAt: new Date().toISOString()
+        });
+      }
+      setSuccessMessage("সেকশন আপডেট করা হয়েছে!");
+    } catch (err) {
+      console.error("Error toggling section:", err);
+      setSuccessMessage("সেকশন আপডেট করতে সমস্যা হয়েছে।");
+    }
+  };
+
+  const handleAddCustomSection = async (cls: number, subject: string) => {
+    if (!newSectionName.trim()) return;
+    await handleToggleSection(cls, subject, newSectionName.trim().toLowerCase());
+    setNewSectionName('');
+  };
 
   const handleLogout = async () => {
     console.log("Logging out...");
@@ -504,6 +671,96 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleFormulaSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'formulas', editingId), {
+          ...formulaFormData,
+          class: selectedClass,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+        setIsAdding(false);
+      } else {
+        await addDoc(collection(db, 'formulas'), {
+          ...formulaFormData,
+          class: selectedClass,
+          authorId: auth.currentUser.uid,
+          authorName: 'Admin',
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setFormulaFormData({ title: '', content: '', class: selectedClass, studentId: 'all' });
+      setSuccessMessage("Formula saved successfully!");
+    } catch (err) {
+      console.error("Error saving formula:", err);
+      setSuccessMessage("Error saving formula.");
+    }
+  };
+
+  const handleWritingSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'writing_content', editingId), {
+          ...writingFormData,
+          class: selectedClass,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+        setIsAdding(false);
+      } else {
+        await addDoc(collection(db, 'writing_content'), {
+          ...writingFormData,
+          class: selectedClass,
+          authorId: auth.currentUser.uid,
+          authorName: 'Admin',
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setWritingFormData({ title: '', content: '', type: 'paragraph', class: selectedClass, studentId: 'all' });
+      setSuccessMessage("Writing content saved successfully!");
+    } catch (err) {
+      console.error("Error saving writing content:", err);
+      setSuccessMessage("Error saving writing content.");
+    }
+  };
+
+  const handleRhymeSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'english_rhymes', editingId), {
+          ...rhymeFormData,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+        setIsAdding(false);
+      } else {
+        await addDoc(collection(db, 'english_rhymes'), {
+          ...rhymeFormData,
+          authorId: auth.currentUser.uid,
+          createdAt: new Date().toISOString()
+        });
+        setIsAdding(false);
+      }
+      setRhymeFormData({ title: '', content: '', videoUrl: '' });
+      setSuccessMessage("Rhyme saved successfully!");
+    } catch (err) {
+      console.error("Error saving rhyme:", err);
+      setSuccessMessage("Error saving rhyme.");
+    }
+  };
+
   const handleDiarySave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth.currentUser) return;
@@ -728,384 +985,543 @@ export default function AdminDashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Seed Confirmation Modal */}
-      <AnimatePresence>
-        {seedConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl"
-            >
-              <div className="bg-primary/5 w-16 h-16 rounded-full flex items-center justify-center mb-6 mx-auto">
-                <Calculator className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="text-xl font-bold text-center mb-2">স্যাম্পল ডাটা যোগ করবেন?</h3>
-              <p className="text-text-muted text-center mb-8">আপনি কি প্রতিটি সেকশনে ১০টি করে স্যাম্পল ম্যাথ এড করতে চান?</p>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setSeedConfirm(false)}
-                  className="flex-1 py-3 rounded-xl font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
-                >
-                  না
-                </button>
-                <button
-                  onClick={seedMathData}
-                  className="flex-1 py-3 rounded-xl font-bold bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
-                >
-                  হ্যাঁ, যোগ করুন
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+  const startFormulaEdit = (formula: any) => {
+    setEditingId(formula.id);
+    setFormulaFormData({
+      title: formula.title,
+      content: formula.content,
+      class: formula.class,
+      studentId: formula.studentId || 'all'
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-      {/* Class 1 Seed Confirmation Modal */}
-      <AnimatePresence>
-        {class1SeedConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl"
-            >
-              <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mb-6 mx-auto">
-                <Calculator className="h-8 w-8 text-green-600" />
-              </div>
-              <h3 className="text-xl font-bold text-center mb-2">ক্লাস ১ এর ডাটা যোগ করবেন?</h3>
-              <p className="text-text-muted text-center mb-8">আপনি কি ক্লাস ১ এর জন্য ৩০টি গাণিতিক সমস্যা এড করতে চান?</p>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setClass1SeedConfirm(false)}
-                  className="flex-1 py-3 rounded-xl font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
-                >
-                  না
-                </button>
-                <button
-                  onClick={seedClass1MathData}
-                  className="flex-1 py-3 rounded-xl font-bold bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-600/20 transition-all"
-                >
-                  হ্যাঁ, যোগ করুন
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+  const startWritingEdit = (writing: any) => {
+    setEditingId(writing.id);
+    setWritingFormData({
+      title: writing.title,
+      content: writing.content,
+      type: writing.type,
+      class: writing.class,
+      studentId: writing.studentId || 'all'
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-      {/* Success Message Toast */}
-      <AnimatePresence>
-        {successMessage && (
+  const startRhymeEdit = (rhyme: any) => {
+    setEditingId(rhyme.id);
+    setRhymeFormData({
+      title: rhyme.title,
+      content: rhyme.content,
+      videoUrl: rhyme.videoUrl || ''
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const sidebarItems = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'diaries', label: 'Daily Diaries', icon: BookOpen },
+    { id: 'math', label: 'Math Quizzes', icon: Calculator },
+    { id: 'bangla', label: 'Bangla Section', icon: BookOpen },
+    { id: 'students', label: 'Students', icon: Users },
+    { id: 'routine', label: 'Routine', icon: Calendar },
+    { id: 'mcqs', label: 'MCQs', icon: CheckCircle2 },
+    { id: 'formulas', label: 'Formulas', icon: Calculator },
+    { id: 'writing', label: 'English Writing', icon: FileText },
+    { id: 'rhymes', label: 'English Rhymes', icon: Feather },
+    { id: 'settings', label: 'Class Settings', icon: Settings },
+  ];
+
+  const renderOverview = () => (
+    <div className="space-y-6 lg:space-y-8">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {stats.map((stat) => (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
+            key={stat.name}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-3"
+            className="premium-card p-6 flex items-center space-x-4"
           >
-            <CheckCircle2 className="h-5 w-5 text-green-400" />
-            <span className="font-medium">{successMessage}</span>
+            <div className={cn("p-4 rounded-2xl text-white shadow-lg", stat.color)}>
+              <stat.icon className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-text-muted">{stat.name}</p>
+              <h3 className="text-2xl font-bold text-gray-900">{toBanglaNumber(stat.value)}</h3>
+            </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        ))}
+      </div>
 
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl"
-            >
-              <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mb-6 mx-auto">
-                <Trash2 className="h-8 w-8 text-red-500" />
-              </div>
-              <h3 className="text-xl font-bold text-center mb-2">আপনি কি নিশ্চিত?</h3>
-              <p className="text-text-muted text-center mb-8">এটি ডিলিট করলে আর ফিরে পাওয়া যাবে না।</p>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-3 rounded-xl font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
-                >
-                  না
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="flex-1 py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-200 transition-all"
-                >
-                  হ্যাঁ, ডিলিট করুন
-                </button>
-              </div>
-            </motion.div>
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="premium-card p-8">
+          <h3 className="text-lg font-bold mb-6 flex items-center space-x-2">
+            <BarChart3 className="h-5 w-5 text-primary" />
+            <span>সাপ্তাহিক অ্যাক্টিভিটি</span>
+          </h3>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                <Bar dataKey="value" fill="#10B981" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        )}
-      </AnimatePresence>
-
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-        <div>
-          <h1 className="text-3xl font-display font-bold flex items-center space-x-3">
-            <LayoutDashboard className="text-primary h-8 w-8" />
-            <span>Admin Dashboard</span>
-          </h1>
-          <p className="text-text-muted mt-1">Manage homework and math quizzes for students.</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
-          <Link 
-            to="/"
-            className="premium-button-secondary flex items-center justify-center space-x-2"
-          >
-            <Eye className="h-5 w-5" />
-            <span>View Student Page</span>
-          </Link>
-          
-          <button 
-            onClick={() => {
-              setIsAdding(!isAdding);
-              setEditingId(null);
-              if (activeTab === 'diaries') {
-                setDiaryFormData({
-                  date: format(addDays(startOfToday(), 1), 'yyyy-MM-dd'),
-                  studentId: '',
-                  subject: '',
-                  task: ''
-                });
-              } else if (activeTab === 'math') {
-                setQuizFormData({
-                  type: 'general',
-                  category: 'addition',
-                  question: '',
-                  options: ['', '', '', ''],
-                  correctAnswer: ''
-                });
-              } else if (activeTab === 'bangla') {
-                if (banglaTab === 'poems') {
-                  setPoemFormData({ title: '', content: '', author: '' });
-                } else {
-                  setConjunctFormData({ combined: '', broken: '', word: '' });
-                }
-              } else if (activeTab === 'students') {
-                setStudentFormData({ name: '', class: 1, uniqueId: '' });
-              } else if (activeTab === 'routine') {
-                setRoutineFormData({ class: 1, day: 'Sunday', subjects: '' });
-              } else if (activeTab === 'mcqs') {
-                setMcqFormData({ class: 3, subject: 'society', question: '', options: ['', '', '', ''], correctAnswer: '' });
-              }
-            }}
-            className="premium-button-primary flex items-center justify-center space-x-2"
-          >
-            {isAdding ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-            <span>{isAdding ? "Cancel" : (activeTab === 'diaries' ? "Add New Diary" : activeTab === 'math' ? "Add New Quiz" : activeTab === 'bangla' ? (banglaTab === 'poems' ? "Add New Poem" : "Add New Conjunct") : activeTab === 'students' ? "Add New Student" : activeTab === 'routine' ? "Add New Routine" : "Add New MCQ")}</span>
-          </button>
-
-          <button 
-            onClick={handleLogout}
-            className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-all border border-red-100"
-            title="Logout"
-          >
-            <LogOut className="h-6 w-6" />
-          </button>
+        <div className="premium-card p-8">
+          <h3 className="text-lg font-bold mb-6 flex items-center space-x-2">
+            <PieChart className="h-5 w-5 text-primary" />
+            <span>সেকশন ভিত্তিক ডাটা</span>
+          </h3>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={stats}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {stats.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
+    </div>
+  );
 
-      {/* Tabs */}
-      <div className="flex space-x-4 mb-8 overflow-x-auto pb-2">
-        <button
-          onClick={() => { setActiveTab('diaries'); setIsAdding(false); setEditingId(null); setLoading(true); }}
-          className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
-            activeTab === 'diaries' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
-          )}
-        >
-          Daily Diaries
-        </button>
-        <button
-          onClick={() => { setActiveTab('math'); setIsAdding(false); setEditingId(null); setLoading(true); }}
-          className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
-            activeTab === 'math' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
-          )}
-        >
-          Math Quizzes
-        </button>
-        <button
-          onClick={() => { setActiveTab('bangla'); setIsAdding(false); setEditingId(null); setLoading(true); }}
-          className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
-            activeTab === 'bangla' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
-          )}
-        >
-          Bangla Section
-        </button>
-        <button
-          onClick={() => { setActiveTab('students'); setIsAdding(false); setEditingId(null); setLoading(true); }}
-          className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
-            activeTab === 'students' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
-          )}
-        >
-          Students
-        </button>
-        <button
-          onClick={() => { setActiveTab('routine'); setIsAdding(false); setEditingId(null); setLoading(true); }}
-          className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
-            activeTab === 'routine' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
-          )}
-        >
-          Routine
-        </button>
-        <button
-          onClick={() => { setActiveTab('mcqs'); setIsAdding(false); setEditingId(null); setLoading(true); }}
-          className={cn(
-            "px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap",
-            activeTab === 'mcqs' ? "bg-primary text-white" : "bg-white text-text-muted hover:bg-gray-50"
-          )}
-        >
-          MCQs
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Sidebar Controls */}
-        <div className="lg:col-span-1 space-y-6">
-          {activeTab === 'diaries' ? (
-            <div className="premium-card p-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">Select Class to Manage</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[...Array(10)].map((_, i) => (
-                  <button
-                    key={i + 1}
-                    onClick={() => setSelectedClass(i + 1)}
-                    className={cn(
-                      "py-3 rounded-xl font-medium transition-all",
-                      selectedClass === i + 1 
-                        ? "bg-primary text-white shadow-md shadow-primary/20" 
-                        : "bg-gray-50 text-text-muted hover:bg-gray-100"
-                    )}
-                  >
-                    Class {i + 1}
-                  </button>
-                ))}
+  const renderRhymes = () => (
+    <div className="space-y-6 lg:space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {rhymes.map((rhyme) => (
+          <motion.div
+            key={rhyme.id}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="premium-card p-6 group"
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-primary/10 rounded-xl">
+                <Feather className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => startRhymeEdit(rhyme)}
+                  className="p-2 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors"
+                >
+                  <Edit2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => handleDelete('english_rhymes', rhyme.id)}
+                  className="p-2 hover:bg-red-50 rounded-lg text-red-600 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             </div>
-          ) : activeTab === 'math' ? (
-            <div className="space-y-6">
-              <div className="premium-card p-6 bg-primary/5 border-primary/10">
-                <h3 className="font-semibold text-primary mb-2 flex items-center space-x-2">
-                  <Calculator className="h-5 w-5" />
-                  <span>Math Management</span>
-                </h3>
-                <p className="text-sm text-primary/80 leading-relaxed mb-6">
-                  Add general math questions (Addition, Subtraction, etc.) or Word Problems for students to practice.
-                </p>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setSeedConfirm(true)}
-                    disabled={seeding}
-                    className="w-full premium-button-secondary py-3 px-4 flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
-                  >
-                    {seeding ? (
-                      <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    <span>{seeding ? "যোগ হচ্ছে..." : "স্যাম্পল ডাটা যোগ করুন"}</span>
-                  </button>
-                  <button
-                    onClick={() => setClass1SeedConfirm(true)}
-                    disabled={seeding}
-                    className="w-full premium-button-primary py-3 px-4 flex items-center justify-center space-x-2 text-sm disabled:opacity-50 bg-green-600 hover:bg-green-700 shadow-green-600/20"
-                  >
-                    {seeding ? (
-                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    <span>{seeding ? "যোগ হচ্ছে..." : "ক্লাস ১ এর প্রশ্ন যোগ করুন"}</span>
-                  </button>
-                </div>
+            <h3 className="text-xl font-bold mb-2">{rhyme.title}</h3>
+            <p className="text-text-muted text-sm line-clamp-3 mb-4 whitespace-pre-line">
+              {rhyme.content}
+            </p>
+            {rhyme.videoUrl && (
+              <div className="text-xs font-bold text-primary bg-primary/5 px-3 py-1 rounded-full inline-block">
+                Video Attached
               </div>
+            )}
+          </motion.div>
+        ))}
+      </div>
+      {rhymes.length === 0 && <EmptyState message="No rhymes found" />}
+    </div>
+  );
 
-              <div className="premium-card p-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">Filter Quiz Type</label>
-                <div className="space-y-2">
-                  {(['all', 'general', 'word_problem'] as const).map((type) => (
+  const renderSettings = () => (
+    <div className="space-y-6 lg:space-y-8">
+      <div className="premium-card p-4 lg:p-8">
+        <h2 className="text-xl lg:text-2xl font-bold mb-6 flex items-center space-x-2">
+          <Settings className="h-6 w-6 text-primary" />
+          <span>Class & Subject Settings</span>
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Select Class</label>
+            <div className="grid grid-cols-5 gap-2">
+              {[...Array(10)].map((_, i) => (
+                <button
+                  key={i + 1}
+                  onClick={() => setSelectedClass(i + 1)}
+                  className={cn(
+                    "py-2 rounded-xl font-medium transition-all",
+                    selectedClass === i + 1 ? "bg-primary text-white" : "bg-gray-50 text-text-muted hover:bg-gray-100"
+                  )}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Select Subject</label>
+            <div className="flex space-x-2">
+              {['bangla', 'english', 'math'].map((sub) => (
+                <button
+                  key={sub}
+                  onClick={() => setSelectedSubject(sub)}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl font-medium transition-all capitalize",
+                    selectedSubject === sub ? "bg-primary text-white" : "bg-gray-50 text-text-muted hover:bg-gray-100"
+                  )}
+                >
+                  {sub}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+        <div className="premium-card p-4 lg:p-8">
+          <h3 className="text-lg font-bold mb-6">Manage Sections for Class {selectedClass} - {selectedSubject}</h3>
+          <div className="space-y-4">
+            {/* Default Sections */}
+            <div className="p-3 lg:p-4 bg-gray-50 rounded-2xl space-y-3">
+              <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Default Sections</h4>
+              {['quiz', 'test', 'paragraph', 'formula'].map((section) => {
+                const setting = classSettings.find(s => s.class === selectedClass && s.subject === selectedSubject);
+                const isEnabled = setting?.enabledSections?.includes(section) ?? false;
+                return (
+                  <div key={section} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100">
+                    <span className="font-medium capitalize">{section}</span>
                     <button
-                      key={type}
-                      onClick={() => setMathFilter(type)}
+                      onClick={() => handleToggleSection(selectedClass, selectedSubject, section)}
                       className={cn(
-                        "w-full py-2 px-4 rounded-xl text-left font-medium transition-all capitalize",
-                        mathFilter === type 
-                          ? "bg-primary text-white" 
-                          : "bg-gray-50 text-text-muted hover:bg-gray-100"
+                        "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
+                        isEnabled ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-400"
                       )}
                     >
-                      {type === 'all' ? 'All Quizzes' : type === 'general' ? 'General Math' : 'Word Problems'}
+                      {isEnabled ? "Enabled" : "Disabled"}
                     </button>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                );
+              })}
             </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="premium-card p-6 bg-purple-50 border-purple-100">
-                <h3 className="font-semibold text-purple-700 mb-2 flex items-center space-x-2">
-                  <BookOpen className="h-5 w-5" />
-                  <span>Bangla Management</span>
-                </h3>
-                <p className="text-sm text-purple-700/80 leading-relaxed mb-6">
-                  Manage poems and conjuncts for the Bangla section.
-                </p>
-              </div>
 
-              <div className="premium-card p-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">Select Category</label>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => { setBanglaTab('poems'); setIsAdding(false); setEditingId(null); }}
-                    className={cn(
-                      "w-full py-3 px-4 rounded-xl text-left font-medium transition-all",
-                      banglaTab === 'poems' 
-                        ? "bg-purple-500 text-white shadow-md shadow-purple-500/20" 
-                        : "bg-gray-50 text-text-muted hover:bg-gray-100"
-                    )}
-                  >
-                    Poems (কবিতা)
-                  </button>
-                  <button
-                    onClick={() => { setBanglaTab('conjuncts'); setIsAdding(false); setEditingId(null); }}
-                    className={cn(
-                      "w-full py-3 px-4 rounded-xl text-left font-medium transition-all",
-                      banglaTab === 'conjuncts' 
-                        ? "bg-green-500 text-white shadow-md shadow-green-500/20" 
-                        : "bg-gray-50 text-text-muted hover:bg-gray-100"
-                    )}
-                  >
-                    Conjuncts (যুক্তবর্ণ)
-                  </button>
-                </div>
+            {/* Custom Sections */}
+            <div className="p-3 lg:p-4 bg-primary/5 rounded-2xl space-y-3">
+              <h4 className="text-sm font-bold text-primary uppercase tracking-wider">Custom Sections</h4>
+              <div className="flex space-x-2 mb-4">
+                <input
+                  type="text"
+                  placeholder="New section name..."
+                  value={newSectionName}
+                  onChange={(e) => setNewSectionName(e.target.value)}
+                  className="premium-input text-sm py-2 px-3"
+                />
+                <button
+                  onClick={() => handleAddCustomSection(selectedClass, selectedSubject)}
+                  className="premium-button-primary py-2 px-3 lg:px-4 text-xs lg:text-sm whitespace-nowrap"
+                >
+                  Add
+                </button>
               </div>
+              {classSettings.find(s => s.class === selectedClass && s.subject === selectedSubject)?.enabledSections && 
+                classSettings.find(s => s.class === selectedClass && s.subject === selectedSubject).enabledSections
+                  .filter((name: string) => !['quiz', 'test', 'paragraph', 'formula'].includes(name))
+                  .map((name: string) => (
+                    <div key={name} className="flex items-center justify-between p-3 bg-white rounded-xl border border-primary/10">
+                      <span className="font-medium capitalize">{name}</span>
+                      <button
+                        onClick={() => handleToggleSection(selectedClass, selectedSubject, name)}
+                        className="px-4 py-1.5 rounded-full text-xs font-bold transition-all bg-primary/10 text-primary"
+                      >
+                        Enabled
+                      </button>
+                    </div>
+                  ))
+              }
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="lg:col-span-3 space-y-8">
-          <AnimatePresence>
-            {isAdding && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="premium-card p-8 border-2 border-primary/20"
+        <div className="premium-card p-8 bg-primary/5 border-primary/10">
+          <h3 className="text-lg font-bold mb-4">How it works?</h3>
+          <p className="text-sm text-primary/80 leading-relaxed space-y-4">
+            এখানে আপনি প্রতিটি ক্লাসের প্রতিটি বিষয়ের জন্য আলাদা আলাদা সেকশন সেট করতে পারবেন। 
+            <br /><br />
+            ১. ডিফল্ট সেকশনগুলো (Quiz, Test, Paragraph, Formula) আপনি চাইলে অন বা অফ করতে পারেন। 
+            <br /><br />
+            ২. আপনার যদি নতুন কোনো সেকশন প্রয়োজন হয় (যেমন: "রচনা সমূহ", "দরখাস্ত সমূহ"), তবে আপনি তা "Custom Sections" এ এড করতে পারেন। 
+            <br /><br />
+            ৩. স্টুডেন্টরা তাদের ড্যাশবোর্ডে শুধুমাত্র আপনার এনাবল করা সেকশনগুলোই দেখতে পাবে।
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const COLORS = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B'];
+
+  return (
+    <div className="flex min-h-screen bg-gray-50">
+      {/* Mobile Sidebar Overlay */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar Navigation */}
+      <motion.aside
+        initial={false}
+        animate={{ 
+          width: isSidebarOpen ? 280 : 80,
+          x: typeof window !== 'undefined' && window.innerWidth < 1024 
+            ? (isMobileMenuOpen ? 0 : -280) 
+            : 0
+        }}
+        className={cn(
+          "fixed left-0 top-0 h-full bg-white border-r border-gray-200 z-50 overflow-hidden transition-all duration-300",
+          !isSidebarOpen && "lg:w-20"
+        )}
+      >
+        <div className="flex flex-col h-full">
+          <div className="p-6 flex items-center justify-between">
+            <AnimatePresence mode="wait">
+              {isSidebarOpen && (
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="flex items-center space-x-3"
+                >
+                  <div className="bg-primary p-2 rounded-xl">
+                    <LayoutDashboard className="h-6 w-6 text-white" />
+                  </div>
+                  <span className="font-display font-bold text-xl">Admin</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <button
+              onClick={() => {
+                if (window.innerWidth < 1024) {
+                  setIsMobileMenuOpen(false);
+                } else {
+                  setIsSidebarOpen(!isSidebarOpen);
+                }
+              }}
+              className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              <X className="lg:hidden h-6 w-6 text-gray-500" />
+              <Menu className="hidden lg:block h-5 w-5 text-gray-500" />
+            </button>
+          </div>
+
+          <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-4">
+            {sidebarItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id as any);
+                  setIsAdding(false);
+                  setEditingId(null);
+                  if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center space-x-3 px-4 py-3 rounded-2xl transition-all group",
+                  activeTab === item.id
+                    ? "bg-primary text-white shadow-lg shadow-primary/20"
+                    : "text-text-muted hover:bg-gray-50 hover:text-primary"
+                )}
               >
+                <item.icon className={cn(
+                  "h-5 w-5 shrink-0",
+                  activeTab === item.id ? "text-white" : "text-gray-400 group-hover:text-primary"
+                )} />
+                <AnimatePresence mode="wait">
+                  {isSidebarOpen && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      className="font-medium whitespace-nowrap"
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+            ))}
+          </nav>
+
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-red-500 hover:bg-red-50 transition-all"
+            >
+              <LogOut className="h-5 w-5 shrink-0" />
+              {isSidebarOpen && <span className="font-medium">Logout</span>}
+            </button>
+          </div>
+        </div>
+      </motion.aside>
+
+      {/* Main Content Area */}
+      <main className={cn(
+        "flex-1 transition-all duration-300 min-w-0",
+        isSidebarOpen ? "lg:ml-[280px]" : "lg:ml-[80px]",
+        "ml-0"
+      )}>
+        {/* Header */}
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 lg:px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            >
+              <Menu className="h-6 w-6 text-gray-600" />
+            </button>
+            <div>
+              <h2 className="text-lg lg:text-xl font-bold text-gray-900 capitalize truncate max-w-[150px] lg:max-w-none">
+                {sidebarItems.find(i => i.id === activeTab)?.label}
+              </h2>
+              <p className="text-xs lg:text-sm text-text-muted hidden sm:block">Welcome back, Administrator</p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 lg:space-x-4">
+            <Link 
+              to="/"
+              className="p-2 lg:px-4 lg:py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all flex items-center space-x-2"
+              title="View Site"
+            >
+              <Eye className="h-4 w-4" />
+              <span className="hidden sm:inline">View Site</span>
+            </Link>
+            
+            {activeTab !== 'overview' && activeTab !== 'settings' && (
+              <button 
+                onClick={() => {
+                  setIsAdding(!isAdding);
+                  setEditingId(null);
+                  if (activeTab === 'rhymes') setRhymeFormData({ title: '', content: '', videoUrl: '' });
+                }}
+                className="premium-button-primary py-2 px-3 lg:px-4 flex items-center space-x-2 text-xs lg:text-sm"
+              >
+                {isAdding ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                <span>{isAdding ? "Cancel" : "Add New"}</span>
+              </button>
+            )}
+          </div>
+        </header>
+
+        <div className="p-4 lg:p-8">
+          {/* Modals & Toasts */}
+          <AnimatePresence>
+            {seedConfirm && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl"
+                >
+                  <div className="bg-primary/5 w-16 h-16 rounded-full flex items-center justify-center mb-6 mx-auto">
+                    <Calculator className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-bold text-center mb-2">স্যাম্পল ডাটা যোগ করবেন?</h3>
+                  <p className="text-text-muted text-center mb-8">আপনি কি প্রতিটি সেকশনে ১০টি করে স্যাম্পল ম্যাথ এড করতে চান?</p>
+                  <div className="flex space-x-4">
+                    <button onClick={() => setSeedConfirm(false)} className="flex-1 py-3 rounded-xl font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all">না</button>
+                    <button onClick={seedMathData} className="flex-1 py-3 rounded-xl font-bold bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">হ্যাঁ, যোগ করুন</button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {successMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 50 }}
+                className="fixed bottom-8 right-8 z-50 bg-gray-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-3"
+              >
+                <CheckCircle2 className="h-5 w-5 text-green-400" />
+                <span className="font-medium">{successMessage}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Tab Content Logic */}
+          <div className="max-w-6xl mx-auto">
+            {activeTab === 'overview' ? (
+              renderOverview()
+            ) : activeTab === 'settings' ? (
+              renderSettings()
+            ) : (
+              <div className="space-y-8">
+                {/* Filters for specific tabs */}
+                {['diaries', 'students', 'routine', 'mcqs', 'formulas', 'writing'].includes(activeTab) && (
+                  <div className="premium-card p-4 lg:p-6 flex flex-col space-y-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Filter className="h-4 w-4 text-primary" />
+                      </div>
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Class Filter</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[...Array(10)].map((_, i) => (
+                        <button
+                          key={i + 1}
+                          onClick={() => setSelectedClass(i + 1)}
+                          className={cn(
+                            "w-10 h-10 lg:w-12 lg:h-12 rounded-xl font-bold transition-all flex items-center justify-center",
+                            selectedClass === i + 1
+                              ? "bg-primary text-white shadow-lg shadow-primary/20 scale-110"
+                              : "bg-gray-50 text-gray-400 hover:bg-gray-100"
+                          )}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Forms Section */}
+                <AnimatePresence>
+                  {isAdding && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      className="premium-card p-8 border-2 border-primary/20"
+                    >
                 {activeTab === 'diaries' ? (
                   <>
                     <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
@@ -1463,6 +1879,175 @@ export default function AdminDashboard() {
                       </div>
                     </form>
                   </>
+                ) : activeTab === 'formulas' ? (
+                  <>
+                    <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                      <Calculator className="text-primary h-6 w-6" />
+                      <span>{editingId ? "Edit Formula" : "Add New Formula"}</span>
+                    </h2>
+                    <form onSubmit={handleFormulaSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. Pythagorean Theorem"
+                            value={formulaFormData.title}
+                            onChange={(e) => setFormulaFormData({...formulaFormData, title: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Target Student (Optional)</label>
+                          <select
+                            value={formulaFormData.studentId}
+                            onChange={(e) => setFormulaFormData({...formulaFormData, studentId: e.target.value})}
+                            className="premium-input"
+                          >
+                            <option value="all">All Students in Class {selectedClass}</option>
+                            {students.map(student => (
+                              <option key={student.id} value={student.id}>{student.name} (ID: {student.uniqueId})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Formula Content</label>
+                        <textarea 
+                          required
+                          rows={4}
+                          placeholder="Enter the formula here..."
+                          value={formulaFormData.content}
+                          onChange={(e) => setFormulaFormData({...formulaFormData, content: e.target.value})}
+                          className="premium-input resize-none"
+                        />
+                      </div>
+                      <div className="flex justify-end space-x-4">
+                        <button type="submit" className="premium-button-primary flex items-center space-x-2">
+                          <Save className="h-5 w-5" />
+                          <span>{editingId ? "Update Formula" : "Save Formula"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                ) : activeTab === 'writing' ? (
+                  <>
+                    <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                      <BookOpen className="text-primary h-6 w-6" />
+                      <span>{editingId ? "Edit Writing Content" : "Add New Writing Content"}</span>
+                    </h2>
+                    <form onSubmit={handleWritingSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+                          <select
+                            required
+                            value={writingFormData.type}
+                            onChange={(e) => setWritingFormData({...writingFormData, type: e.target.value as any})}
+                            className="premium-input"
+                          >
+                            <option value="paragraph">Paragraph</option>
+                            <option value="story">Story</option>
+                            <option value="dialogue">Dialogue</option>
+                            <option value="composition">Composition</option>
+                            <option value="letter">Letter</option>
+                            <option value="email">Email</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Title</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. My School"
+                            value={writingFormData.title}
+                            onChange={(e) => setWritingFormData({...writingFormData, title: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Target Student (Optional)</label>
+                          <select
+                            value={writingFormData.studentId}
+                            onChange={(e) => setWritingFormData({...writingFormData, studentId: e.target.value})}
+                            className="premium-input"
+                          >
+                            <option value="all">All Students in Class {selectedClass}</option>
+                            {students.map(student => (
+                              <option key={student.id} value={student.id}>{student.name} (ID: {student.uniqueId})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Content</label>
+                        <textarea 
+                          required
+                          rows={8}
+                          placeholder="Enter the content here..."
+                          value={writingFormData.content}
+                          onChange={(e) => setWritingFormData({...writingFormData, content: e.target.value})}
+                          className="premium-input resize-none"
+                        />
+                      </div>
+                      <div className="flex justify-end space-x-4">
+                        <button type="submit" className="premium-button-primary flex items-center space-x-2">
+                          <Save className="h-5 w-5" />
+                          <span>{editingId ? "Update Content" : "Save Content"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                ) : activeTab === 'rhymes' ? (
+                  <>
+                    <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+                      <Feather className="text-primary h-6 w-6" />
+                      <span>{editingId ? "Edit English Rhyme" : "Add New English Rhyme"}</span>
+                    </h2>
+                    <form onSubmit={handleRhymeSave} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Rhyme Title</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="e.g. Twinkle Twinkle Little Star"
+                            value={rhymeFormData.title}
+                            onChange={(e) => setRhymeFormData({...rhymeFormData, title: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Video URL (Optional)</label>
+                          <input 
+                            type="url"
+                            placeholder="e.g. https://www.youtube.com/watch?v=..."
+                            value={rhymeFormData.videoUrl}
+                            onChange={(e) => setRhymeFormData({...rhymeFormData, videoUrl: e.target.value})}
+                            className="premium-input"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Rhyme Content</label>
+                        <textarea 
+                          required
+                          rows={10}
+                          placeholder="Enter the rhyme lyrics here..."
+                          value={rhymeFormData.content}
+                          onChange={(e) => setRhymeFormData({...rhymeFormData, content: e.target.value})}
+                          className="premium-input resize-none"
+                        />
+                      </div>
+                      <div className="flex justify-end space-x-4">
+                        <button type="submit" className="premium-button-primary flex items-center space-x-2">
+                          <Save className="h-5 w-5" />
+                          <span>{editingId ? "Update Rhyme" : "Save Rhyme"}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </>
                 ) : (
                   <>
                     <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
@@ -1551,13 +2136,13 @@ export default function AdminDashboard() {
             )}
           </AnimatePresence>
 
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-display font-bold">
-                {activeTab === 'diaries' ? `Recent Diaries for Class ${selectedClass}` : activeTab === 'math' ? "Recent Math Quizzes" : activeTab === 'bangla' ? (banglaTab === 'poems' ? "Recent Poems" : "Recent Conjuncts") : activeTab === 'students' ? `Students in Class ${selectedClass}` : activeTab === 'routine' ? `Routine for Class ${selectedClass}` : `MCQs for Class ${selectedClass}`}
+          <div className="space-y-4 lg:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h2 className="text-lg lg:text-2xl font-display font-bold">
+                {activeTab === 'diaries' ? `Recent Diaries for Class ${selectedClass}` : activeTab === 'math' ? "Recent Math Quizzes" : activeTab === 'bangla' ? (banglaTab === 'poems' ? "Recent Poems" : "Recent Conjuncts") : activeTab === 'students' ? `Students in Class ${selectedClass}` : activeTab === 'routine' ? `Routine for Class ${selectedClass}` : activeTab === 'rhymes' ? "Recent Rhymes" : `MCQs for Class ${selectedClass}`}
               </h2>
-              <span className="text-sm text-text-muted font-medium">
-                {activeTab === 'diaries' ? diaries.length : activeTab === 'math' ? quizzes.length : activeTab === 'bangla' ? (banglaTab === 'poems' ? poems.length : conjuncts.length) : activeTab === 'students' ? students.length : activeTab === 'routine' ? routines.length : mcqs.length} entries found
+              <span className="text-xs lg:text-sm text-text-muted font-medium">
+                {activeTab === 'diaries' ? diaries.length : activeTab === 'math' ? quizzes.length : activeTab === 'bangla' ? (banglaTab === 'poems' ? poems.length : conjuncts.length) : activeTab === 'students' ? students.length : activeTab === 'routine' ? routines.length : activeTab === 'rhymes' ? rhymes.length : mcqs.length} entries found
               </span>
             </div>
 
@@ -1742,8 +2327,70 @@ export default function AdminDashboard() {
               ) : (
                 <EmptyState message="No routines found" />
               )
-            ) : (
-              mcqs.length > 0 ? (
+            ) : activeTab === 'formulas' ? (
+              formulas.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {formulas.map((formula) => (
+                    <motion.div key={formula.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                      <div className="flex items-start space-x-4">
+                        <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-primary/5 transition-colors">
+                          <Calculator className="h-6 w-6 text-text-muted group-hover:text-primary transition-colors" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-3 mb-1">
+                            <span className="font-display font-bold text-lg">{formula.title}</span>
+                            {formula.studentId && formula.studentId !== 'all' && (
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs font-bold rounded-full">Specific Student</span>
+                            )}
+                          </div>
+                          <p className="text-text-muted line-clamp-2">{formula.content}</p>
+                          <p className="text-xs text-gray-500 mt-1">Author: {formula.authorName || 'Unknown'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => startFormulaEdit(formula)} className="p-3 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                        <button onClick={() => handleDelete('formulas', formula.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No formulas found for this class" />
+              )
+            ) : activeTab === 'writing' ? (
+              writingContent.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {writingContent.map((writing) => (
+                    <motion.div key={writing.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
+                      <div className="flex items-start space-x-4">
+                        <div className="bg-gray-50 p-3 rounded-xl group-hover:bg-primary/5 transition-colors">
+                          <BookOpen className="h-6 w-6 text-text-muted group-hover:text-primary transition-colors" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-3 mb-1">
+                            <span className="font-display font-bold text-lg">{writing.title}</span>
+                            <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-bold rounded-full uppercase tracking-wider">{writing.type}</span>
+                            {writing.studentId && writing.studentId !== 'all' && (
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs font-bold rounded-full">Specific Student</span>
+                            )}
+                          </div>
+                          <p className="text-text-muted line-clamp-2">{writing.content}</p>
+                          <p className="text-xs text-gray-500 mt-1">Author: {writing.authorName || 'Unknown'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button onClick={() => startWritingEdit(writing)} className="p-3 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"><Edit2 className="h-5 w-5" /></button>
+                        <button onClick={() => handleDelete('writing_content', writing.id)} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="h-5 w-5" /></button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No writing content found for this class" />
+              )
+            ) : activeTab === 'rhymes' ? (
+              renderRhymes()
+            ) : activeTab === 'mcqs' ? (
                 <div className="grid grid-cols-1 gap-4">
                   {mcqs.map((mcq) => (
                     <motion.div layout key={mcq.id} className="premium-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 group">
@@ -1769,12 +2416,15 @@ export default function AdminDashboard() {
               ) : (
                 <EmptyState message="No MCQs found" />
               )
-            )}
+            }
           </div>
         </div>
-      </div>
+      )}
     </div>
-  );
+  </div>
+</main>
+</div>
+);
 }
 
 function EmptyState({ message }: { message: string }) {

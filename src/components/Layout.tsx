@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { GraduationCap, BookOpen, LayoutDashboard, LogOut, Menu, X as CloseIcon } from 'lucide-react';
+import { GraduationCap, BookOpen, LayoutDashboard, LogOut, Menu, X as CloseIcon, Gamepad2 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -9,6 +9,7 @@ import { cn } from '../lib/utils';
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [studentSession, setStudentSession] = React.useState<any>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -21,7 +22,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     setIsMenuOpen(false);
+    const session = localStorage.getItem('studentSession');
+    if (session) {
+      try {
+        setStudentSession(JSON.parse(session));
+      } catch (e) {
+        console.error("Error parsing student session:", e);
+      }
+    } else {
+      setStudentSession(null);
+    }
   }, [location.pathname]);
+
+  const showSubjectLinks = true; // Allow all students and teachers to see subject links
 
   const handleLogout = async () => {
     console.log("Logging out from Layout...");
@@ -48,23 +61,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Link>
 
             <nav className="hidden md:flex items-center space-x-8">
+              {showSubjectLinks && (
+                <>
+                  <Link 
+                    to="/math" 
+                    className={`font-medium transition-colors ${location.pathname === '/math' ? 'text-primary' : 'text-text-muted hover:text-text'}`}
+                  >
+                    Math
+                  </Link>
+                  <Link 
+                    to="/bangla" 
+                    className={`font-medium transition-colors ${location.pathname === '/bangla' ? 'text-primary' : 'text-text-muted hover:text-text'}`}
+                  >
+                    Bangla
+                  </Link>
+                  <Link 
+                    to="/english" 
+                    className={`font-medium transition-colors ${location.pathname === '/english' ? 'text-primary' : 'text-text-muted hover:text-text'}`}
+                  >
+                    English
+                  </Link>
+                </>
+              )}
               <Link 
-                to="/math" 
-                className={`font-medium transition-colors ${location.pathname === '/math' ? 'text-primary' : 'text-text-muted hover:text-text'}`}
+                to="/game" 
+                className={`font-medium transition-colors ${location.pathname === '/game' ? 'text-primary' : 'text-text-muted hover:text-text'} flex items-center space-x-1`}
               >
-                Math
-              </Link>
-              <Link 
-                to="/bangla" 
-                className={`font-medium transition-colors ${location.pathname === '/bangla' ? 'text-primary' : 'text-text-muted hover:text-text'}`}
-              >
-                Bangla
-              </Link>
-              <Link 
-                to="/english" 
-                className={`font-medium transition-colors ${location.pathname === '/english' ? 'text-primary' : 'text-text-muted hover:text-text'}`}
-              >
-                English
+                <Gamepad2 className="h-4 w-4" />
+                <span>Game</span>
               </Link>
               <Link 
                 to="/" 
@@ -120,32 +144,46 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               className="md:hidden bg-white border-b border-gray-100 overflow-hidden"
             >
               <div className="px-4 pt-2 pb-6 space-y-2">
+                {showSubjectLinks && (
+                  <>
+                    <Link 
+                      to="/math" 
+                      className={cn(
+                        "block px-4 py-3 rounded-xl font-medium transition-colors",
+                        location.pathname === '/math' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                      )}
+                    >
+                      Math
+                    </Link>
+                    <Link 
+                      to="/bangla" 
+                      className={cn(
+                        "block px-4 py-3 rounded-xl font-medium transition-colors",
+                        location.pathname === '/bangla' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                      )}
+                    >
+                      Bangla
+                    </Link>
+                    <Link 
+                      to="/english" 
+                      className={cn(
+                        "block px-4 py-3 rounded-xl font-medium transition-colors",
+                        location.pathname === '/english' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                      )}
+                    >
+                      English
+                    </Link>
+                  </>
+                )}
                 <Link 
-                  to="/math" 
+                  to="/game" 
                   className={cn(
-                    "block px-4 py-3 rounded-xl font-medium transition-colors",
-                    location.pathname === '/math' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
+                    "flex items-center space-x-3 px-4 py-3 rounded-xl font-medium transition-colors",
+                    location.pathname === '/game' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
                   )}
                 >
-                  Math
-                </Link>
-                <Link 
-                  to="/bangla" 
-                  className={cn(
-                    "block px-4 py-3 rounded-xl font-medium transition-colors",
-                    location.pathname === '/bangla' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
-                  )}
-                >
-                  Bangla
-                </Link>
-                <Link 
-                  to="/english" 
-                  className={cn(
-                    "block px-4 py-3 rounded-xl font-medium transition-colors",
-                    location.pathname === '/english' ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-gray-50"
-                  )}
-                >
-                  English
+                  <Gamepad2 className="h-5 w-5" />
+                  <span>Game</span>
                 </Link>
                 <Link 
                   to="/" 

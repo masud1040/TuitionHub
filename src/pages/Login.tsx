@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +22,9 @@ export default function Login() {
     setLoading(true);
     setError(null);
     try {
+      // Clear any student session
+      localStorage.removeItem('studentSession');
+      
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -74,6 +77,18 @@ export default function Login() {
 
       const studentData = querySnapshot.docs[0].data();
       studentData.id = querySnapshot.docs[0].id;
+      
+      // Try to sign in anonymously to get a UID for Firestore rules
+      try {
+        const authResult = await signInAnonymously(auth);
+        studentData.uid = authResult.user.uid;
+      } catch (authErr: any) {
+        console.warn('Anonymous auth failed:', authErr);
+        studentData.uid = null;
+        if (authErr.code === 'auth/admin-restricted-operation') {
+          studentData.authWarning = 'Anonymous login is disabled in Firebase Console. You will have read-only access.';
+        }
+      }
       
       // Store student session in localStorage
       localStorage.setItem('studentSession', JSON.stringify(studentData));

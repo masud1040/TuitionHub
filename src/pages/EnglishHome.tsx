@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { BookOpen, Type, SpellCheck, Feather, ArrowRight, FileText, PenTool, CheckCircle2, Gamepad2 } from 'lucide-react';
+import { BookOpen, Type, SpellCheck, Feather, ArrowRight, FileText, PenTool, CheckCircle2, Mail, Sigma, Gamepad2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-export default function BanglaHome() {
+export default function EnglishHome() {
   const [studentSession, setStudentSession] = useState<any>(null);
   const [enabledSections, setEnabledSections] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export default function BanglaHome() {
         const q = query(
           collection(db, 'class_settings'),
           where('class', '==', currentClass),
-          where('subject', '==', 'Bangla')
+          where('subject', '==', 'English')
         );
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
@@ -37,7 +37,7 @@ export default function BanglaHome() {
         } else {
           // Default sections if no settings found
           if (currentClass >= 3) {
-            setEnabledSections(['quiz', 'test']);
+            setEnabledSections(['quiz', 'paragraph']);
           }
         }
       } catch (error) {
@@ -56,41 +56,33 @@ export default function BanglaHome() {
     if (studentClass <= 2) {
       return [
         {
-          id: 'vowels',
-          title: 'স্বরবর্ণ',
-          description: 'অ, আ, ই, ঈ... শিখুন',
+          id: 'alphabet',
+          title: 'Alphabet',
+          description: 'Learn A, B, C, D...',
           icon: Type,
-          color: 'bg-red-500',
-          path: '/bangla/vowels'
-        },
-        {
-          id: 'consonants',
-          title: 'ব্যঞ্জনবর্ণ',
-          description: 'ক, খ, গ, ঘ... শিখুন',
-          icon: SpellCheck,
           color: 'bg-blue-500',
-          path: '/bangla/consonants'
+          path: '/english/alphabet'
         },
         {
-          id: 'conjuncts',
-          title: 'যুক্তবর্ণ',
-          description: 'যুক্তবর্ণ ভেঙে শব্দ শিখুন',
-          icon: BookOpen,
+          id: 'words',
+          title: 'Word Making',
+          description: 'Learn simple words',
+          icon: SpellCheck,
           color: 'bg-green-500',
-          path: '/bangla/conjuncts'
+          path: '/english/words'
         },
         {
-          id: 'poems',
-          title: 'কবিতা',
-          description: 'মজার মজার বাংলা কবিতা পড়ুন',
+          id: 'rhymes',
+          title: 'Rhymes',
+          description: 'Fun English rhymes',
           icon: Feather,
           color: 'bg-purple-500',
-          path: '/bangla/poems'
+          path: '/english/rhymes'
         },
         {
           id: 'game',
-          title: 'বাবল পপ গেম',
-          description: 'মজার বাবল পপ গেম খেলুন',
+          title: 'Bubble Pop Game',
+          description: 'Fun interactive learning game',
           icon: Gamepad2,
           color: 'bg-orange-500',
           path: '/game'
@@ -101,25 +93,59 @@ export default function BanglaHome() {
     // For Class 3-10, use settings
     const categories = [];
 
+    // Add Word Making for class 3
+    if (studentClass === 3) {
+      categories.push({
+        id: 'words',
+        title: 'Word Making',
+        description: 'Learn simple words',
+        icon: SpellCheck,
+        color: 'bg-green-500',
+        path: '/english/words'
+      });
+    }
+
     if (enabledSections.includes('quiz')) {
       categories.push({
         id: 'quiz',
-        title: 'কুইজ টেস্ট',
-        description: 'আপনার মেধা যাচাই করুন',
+        title: 'Quiz Test',
+        description: 'Test your English skills',
         icon: CheckCircle2,
         color: 'bg-orange-500',
         path: '/?tab=quiz'
       });
     }
 
+    if (enabledSections.includes('paragraph')) {
+      categories.push({
+        id: 'paragraphs',
+        title: 'Paragraphs',
+        description: 'Important English paragraphs',
+        icon: FileText,
+        color: 'bg-teal-500',
+        path: '/?tab=writing&type=paragraph'
+      });
+    }
+
     if (enabledSections.includes('test')) {
       categories.push({
         id: 'test',
-        title: 'মডেল টেস্ট',
-        description: 'পরীক্ষার প্রস্তুতি নিন',
+        title: 'Model Test',
+        description: 'Prepare for exams',
         icon: FileText,
         color: 'bg-red-500',
         path: '/?tab=mcqs'
+      });
+    }
+
+    if (enabledSections.includes('formula')) {
+      categories.push({
+        id: 'grammar',
+        title: 'Grammar Rules',
+        description: 'Important English grammar rules',
+        icon: Sigma,
+        color: 'bg-indigo-500',
+        path: '/?tab=formulas'
       });
     }
 
@@ -127,24 +153,24 @@ export default function BanglaHome() {
     const defaultSections = ['quiz', 'test', 'paragraph', 'formula'];
     enabledSections.forEach(section => {
       if (!defaultSections.includes(section)) {
-        let title = section.charAt(0).toUpperCase() + section.slice(1);
         let icon = BookOpen;
         let color = 'bg-teal-500';
 
-        if (section.includes('রচনা')) {
-          title = 'রচনা সমূহ';
-          icon = PenTool;
-          color = 'bg-indigo-500';
-        } else if (section.includes('দরখাস্ত')) {
-          title = 'দরখাস্ত সমূহ';
+        if (section.toLowerCase().includes('email')) {
+          icon = Mail;
+          color = 'bg-blue-600';
+        } else if (section.toLowerCase().includes('application')) {
           icon = FileText;
           color = 'bg-pink-500';
+        } else if (section.toLowerCase().includes('composition')) {
+          icon = PenTool;
+          color = 'bg-indigo-500';
         }
 
         categories.push({
           id: section,
-          title: title,
-          description: `${title} সংক্রান্ত সকল তথ্য`,
+          title: section.charAt(0).toUpperCase() + section.slice(1),
+          description: `${section} related materials`,
           icon: icon,
           color: color,
           path: `/?tab=writing&type=${section}`
@@ -173,12 +199,12 @@ export default function BanglaHome() {
           animate={{ opacity: 1, y: 0 }}
           className="text-4xl md:text-5xl font-display font-bold mb-4"
         >
-          বাংলা <span className="text-primary">বিভাগ</span>
+          English <span className="text-primary">Section</span>
         </motion.h1>
         <p className="text-text-muted text-lg max-w-2xl mx-auto">
-          {studentClass <= 2 
-            ? "বর্ণমালা, যুক্তবর্ণ এবং মজার কবিতার মাধ্যমে বাংলা শিখুন।" 
-            : "আপনার ক্লাসের উপযোগী বাংলা কন্টেন্ট এখান থেকে পড়ুন।"}
+          {studentClass <= 3 
+            ? "Learn English through alphabets, words, and rhymes." 
+            : "Access English study materials suitable for your class."}
         </p>
       </div>
 
@@ -200,7 +226,7 @@ export default function BanglaHome() {
               <h2 className="text-2xl font-display font-bold mb-3">{category.title}</h2>
               <p className="text-text-muted mb-6">{category.description}</p>
               <div className="flex items-center text-primary font-medium group-hover:translate-x-2 transition-transform mt-auto">
-                <span>শুরু করুন</span>
+                <span>Start Learning</span>
                 <ArrowRight className="ml-2 h-5 w-5" />
               </div>
             </Link>

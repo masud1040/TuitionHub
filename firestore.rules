@@ -12,7 +12,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "saifulalammasudmn@gmail.com" || 
+        ((request.auth.token.email == "saifulalammasudmn@gmail.com" && request.auth.token.email_verified == true) || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher')));
@@ -67,6 +67,44 @@ service cloud.firestore {
     match /mcqs/{mcqId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    // Formula Rules
+    match /formulas/{formulaId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.authorId);
+    }
+
+    // Writing Content Rules
+    match /writing_content/{contentId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.authorId);
+    }
+
+    // Class Settings Rules
+    match /class_settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // English Rhymes Rules
+    function isValidRhyme(data) {
+      return data.keys().hasAll(['title', 'content', 'authorId', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             (!('videoUrl' in data) || (data.videoUrl is string && (data.videoUrl.matches("^https://.*") || data.videoUrl == ""))) &&
+             data.authorId is string &&
+             data.createdAt is string &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    match /english_rhymes/{rhymeId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidRhyme(request.resource.data);
+      allow update: if isAdmin() && isValidRhyme(request.resource.data);
+      allow delete: if isAdmin();
     }
   }
 }

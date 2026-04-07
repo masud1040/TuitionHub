@@ -40,6 +40,66 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "category", "question", "options", "correctAnswer", "authorId"]
+    },
+    "Formula": {
+      "title": "Formula",
+      "description": "Represents a mathematical formula for classes 6-10.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "class": { "type": "integer" },
+        "studentId": { "type": "string", "description": "Optional: set for a specific student." },
+        "isGlobal": { "type": "boolean", "description": "If true, visible to all in the class." },
+        "authorId": { "type": "string" },
+        "authorType": { "type": "string", "enum": ["admin", "teacher", "student"] },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "class", "authorId", "authorType", "authorName"]
+    },
+    "WritingContent": {
+      "title": "WritingContent",
+      "description": "Represents English writing content (paragraph, story, etc.) for classes 6-10.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["paragraph", "story", "dialogue", "composition", "letter", "email"] },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "class": { "type": "integer" },
+        "studentId": { "type": "string" },
+        "isGlobal": { "type": "boolean" },
+        "authorId": { "type": "string" },
+        "authorType": { "type": "string", "enum": ["admin", "teacher", "student"] },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "title", "content", "class", "authorId", "authorType", "authorName"]
+    },
+    "ClassSetting": {
+      "title": "ClassSetting",
+      "description": "Stores enabled sections and custom cards for each class and subject.",
+      "type": "object",
+      "properties": {
+        "class": { "type": "integer" },
+        "subject": { "type": "string" },
+        "enabledSections": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["class", "subject", "enabledSections"]
+    },
+    "EnglishRhyme": {
+      "title": "EnglishRhyme",
+      "description": "Represents an English rhyme with optional video URL.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "videoUrl": { "type": "string", "format": "uri" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "authorId", "createdAt"]
     }
   },
   "firestore": {
@@ -54,6 +114,22 @@
     "/math_quizzes/{quizId}": {
       "schema": "MathQuiz",
       "description": "Math quiz questions."
+    },
+    "/formulas/{formulaId}": {
+      "schema": "Formula",
+      "description": "Mathematical formulas."
+    },
+    "/writing_content/{contentId}": {
+      "schema": "WritingContent",
+      "description": "English writing materials."
+    },
+    "/class_settings/{settingId}": {
+      "schema": "ClassSetting",
+      "description": "Class-specific subject settings."
+    },
+    "/english_rhymes/{rhymeId}": {
+      "schema": "EnglishRhyme",
+      "description": "English rhymes and videos."
     }
   }
 }
